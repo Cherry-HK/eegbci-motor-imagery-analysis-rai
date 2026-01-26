@@ -29,3 +29,10 @@ MNE-Python-*.sh
 # OS files
 .DS_Store
 Thumbs.db
+
+# Dataset (PhysioNet EEGMMIDB)
+data/raw/*
+!data/raw/.gitkeep
+
+# Generated numpy files
+*.npy
