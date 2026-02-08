@@ -12,7 +12,7 @@ class EEGPreprocessor:
                  target_sfreq=128, notch_freq=60):
         
         self.data_path = data_path
-        self.subjects = list(range(1, 110)) if subjects == 'all' else subjects
+        self.subjects = list(range(1, 4)) if subjects == 'all' else subjects
         self.freq_band = freq_band
         self.target_sfreq = target_sfreq
         self.notch_freq = notch_freq
@@ -236,7 +236,8 @@ class EEGPreprocessor:
 # for future reference we can also try LOSO
 if __name__ == "__main__":
 
-    data_path = "data/raw"
+    # MNE downloads to this nested directory structure
+    data_path = "data/MNE-eegbci-data/files/eegmmidb/1.0.0"
 
     preprocessor = EEGPreprocessor(
         data_path=data_path,

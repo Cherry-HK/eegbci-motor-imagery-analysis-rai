@@ -34,5 +34,28 @@ Thumbs.db
 data/raw/*
 !data/raw/.gitkeep
 
-# Generated numpy files
+# MNE-Python downloaded datasets
+data/MNE-eegbci-data/
+
+# Generated numpy files (preprocessed data)
 *.npy
+X_train*.npy
+X_test*.npy
+y_train.npy
+y_test.npy
+subjects.npy
+
+# Trained models and results
+models/*
+!models/.gitkeep
+*.pkl
+*.h5
+*.pt
+*.pth
+
+# Visualization outputs
+*.png
+*.jpg
+*.pdf
+figures/
+results/
