@@ -46,9 +46,6 @@ y_test.npy
 subjects.npy
 
 # Trained models and results
-models/*
-!models/.gitkeep
-!models/*.py
 *.pkl
 *.h5
 *.pt
