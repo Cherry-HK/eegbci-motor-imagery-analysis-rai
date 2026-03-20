@@ -39,11 +39,6 @@ data/MNE-eegbci-data/
 
 # Generated numpy files (preprocessed data)
 *.npy
-X_train*.npy
-X_test*.npy
-y_train.npy
-y_test.npy
-subjects.npy
 
 # Trained models and results
 models/*

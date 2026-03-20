@@ -1,8 +1,12 @@
 """
-CNN-LSTM Model for Motor Imagery EEG Classification
+EEGNet-Motor CNN Model for Motor Imagery EEG Classification
 
-This script trains a CNN-LSTM with attention on raw EEG signals
-for binary motor imagery classification (left vs right hand).
+This script trains an EEGNet-inspired convolutional neural network
+on raw EEG signals for binary motor imagery classification (left vs right hand).
+
+Architecture: Temporal Conv -> Depthwise Spatial Conv -> Separable Conv -> Classifier
+  - Depthwise spatial convolutions learn CSP-like spatial filters
+  - Temporal kernels tuned to mu/beta rhythm frequencies at 128 Hz
 
 Dataset: EEG Motor Movement/Imagery Dataset (PhysioNet)
 Features: Raw EEG (9 channels x 513 timesteps)
@@ -13,16 +17,17 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import accuracy_score, confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
 import os
+from training_utils import EarlyStopping, AugmentedEEGDataset
 
 print("=" * 70)
-print("Motor Imagery BCI - CNN-LSTM Classifier")
+print("Motor Imagery BCI - EEGNet-Motor CNN Classifier")
 print("=" * 70)
 
 # ============================================================================
@@ -57,46 +62,49 @@ except FileNotFoundError:
     exit(1)
 
 # ============================================================================
-# 3. Reshape for LSTM (samples, timesteps, channels)
+# 3. Reshape for CNN: (N, 1, channels, timesteps)
 # ============================================================================
-print("\n[Step 3/8] Reshaping data for LSTM...")
+print("\n[Step 3/8] Reshaping data for CNN...")
 
 if X_train_raw.ndim == 2:
     n_channels = 9
     n_times    = X_train_raw.shape[1] // n_channels
     X_train_3d = X_train_raw[:, :n_channels * n_times].reshape(-1, n_channels, n_times)
     X_test_3d  = X_test_raw[:,  :n_channels * n_times].reshape(-1, n_channels, n_times)
-    X_train_3d = X_train_3d.transpose(0, 2, 1)
-    X_test_3d  = X_test_3d.transpose(0, 2, 1)
 elif X_train_raw.ndim == 3:
-    if X_train_raw.shape[1] < X_train_raw.shape[2]:
+    if X_train_raw.shape[1] > X_train_raw.shape[2]:
+        # (N, timesteps, channels) -> (N, channels, timesteps)
         X_train_3d = X_train_raw.transpose(0, 2, 1)
         X_test_3d  = X_test_raw.transpose(0, 2, 1)
     else:
+        # Already (N, channels, timesteps)
         X_train_3d = X_train_raw
         X_test_3d  = X_test_raw
 
-print(f"   Shape: {X_train_3d.shape} (samples, timesteps, channels)")
-
-n_timesteps = X_train_3d.shape[1]
-n_channels  = X_train_3d.shape[2]
+n_channels = X_train_3d.shape[1]
+n_times = X_train_3d.shape[2]
+print(f"   Shape: {X_train_3d.shape} (samples, channels, timesteps)")
 
 # ============================================================================
-# 4. Normalize
+# 4. Normalize per-channel
 # ============================================================================
-print("\n[Step 4/8] Normalizing data...")
+print("\n[Step 4/8] Normalizing data per-channel...")
 
 scaler = StandardScaler()
-X_train_flat = X_train_3d.reshape(-1, n_channels)
-X_test_flat  = X_test_3d.reshape(-1, n_channels)
+X_train_flat = X_train_3d.transpose(0, 2, 1).reshape(-1, n_channels)
+X_test_flat  = X_test_3d.transpose(0, 2, 1).reshape(-1, n_channels)
 
 X_train_flat = scaler.fit_transform(X_train_flat)
 X_test_flat  = scaler.transform(X_test_flat)
 
-X_train_3d = X_train_flat.reshape(-1, n_timesteps, n_channels)
-X_test_3d  = X_test_flat.reshape(-1, n_timesteps, n_channels)
+X_train_3d = X_train_flat.reshape(-1, n_times, n_channels).transpose(0, 2, 1)
+X_test_3d  = X_test_flat.reshape(-1, n_times, n_channels).transpose(0, 2, 1)
 
-print("   Data normalized.")
+# Add batch channel dim: (N, channels, timesteps) -> (N, 1, channels, timesteps)
+X_train_4d = X_train_3d[:, np.newaxis, :, :]
+X_test_4d  = X_test_3d[:, np.newaxis, :, :]
+
+print(f"   Normalized shape: {X_train_4d.shape} (samples, 1, channels, timesteps)")
 
 # ============================================================================
 # 5. DataLoaders with Augmentation
@@ -104,99 +112,88 @@ print("   Data normalized.")
 print("\n[Step 5/8] Creating DataLoaders...")
 
 
-class AugmentedEEGDataset(Dataset):
-    def __init__(self, X, y, augment=False):
-        self.X = torch.FloatTensor(X)
-        self.y = torch.LongTensor(y)
-        self.augment = augment
+BATCH_SIZE = 16
+train_dataset = AugmentedEEGDataset(X_train_4d, y_train, augment=True, time_shift=20)
+test_dataset  = AugmentedEEGDataset(X_test_4d,  y_test,  augment=False)
 
-    def __len__(self):
-        return len(self.y)
+train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
+test_loader  = DataLoader(test_dataset,  batch_size=BATCH_SIZE, shuffle=False)
 
-    def __getitem__(self, idx):
-        x, y = self.X[idx], self.y[idx]
-        if self.augment and np.random.rand() > 0.5:
-            noise = torch.randn_like(x) * 0.01
-            x = x + noise
-        return x, y
-
-
-train_dataset = AugmentedEEGDataset(X_train_3d, y_train, augment=True)
-test_dataset  = AugmentedEEGDataset(X_test_3d,  y_test,  augment=False)
-
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader  = DataLoader(test_dataset,  batch_size=32, shuffle=False)
-
-print(f"   DataLoaders ready. Batch size: 32")
+print(f"   DataLoaders ready. Batch size: {BATCH_SIZE}")
 
 # ============================================================================
-# 6. Model Definition
+# 6. Model Definition - EEGNet-Motor
 # ============================================================================
-print("\n[Step 6/8] Building CNN-LSTM model...")
+print("\n[Step 6/8] Building EEGNet-Motor CNN model...")
 
 
-class AttentionLayer(nn.Module):
-    def __init__(self, hidden_size):
-        super(AttentionLayer, self).__init__()
-        self.attention = nn.Linear(hidden_size, 1)
+class EEGNet_Motor(nn.Module):
+    """
+    EEGNet-inspired CNN for motor imagery classification.
 
-    def forward(self, lstm_output):
-        attn_weights = torch.softmax(self.attention(lstm_output), dim=1)
-        context = torch.sum(attn_weights * lstm_output, dim=1)
-        return context, attn_weights
+    Architecture:
+      Block 1: Temporal convolution  (captures mu/beta rhythms)
+      Block 2: Depthwise spatial conv (learns CSP-like spatial filters)
+      Block 3: Separable convolution  (temporal refinement + channel mixing)
+      Classifier: Flatten -> Linear -> 2 classes
+    """
 
+    def __init__(self, n_channels, n_times, num_classes=2,
+                 F1=16, D=2, F2=32, kern_len=64, drop_rate=0.25):
+        super(EEGNet_Motor, self).__init__()
 
-class EEG_CNN_LSTM(nn.Module):
-    def __init__(self, n_timesteps, n_channels, num_classes=2):
-        super(EEG_CNN_LSTM, self).__init__()
+        # Block 1: Temporal convolution
+        self.conv1 = nn.Conv2d(1, F1, (1, kern_len), padding=(0, kern_len // 2),
+                               bias=False)
+        self.bn1 = nn.BatchNorm2d(F1)
 
-        self.conv1 = nn.Conv1d(n_channels, 32, kernel_size=5, padding=2)
-        self.bn1   = nn.BatchNorm1d(32)
-        self.pool1 = nn.MaxPool1d(2)
+        # Block 2: Depthwise spatial convolution
+        self.conv2 = nn.Conv2d(F1, F1 * D, (n_channels, 1), groups=F1, bias=False)
+        self.bn2 = nn.BatchNorm2d(F1 * D)
+        self.pool1 = nn.AvgPool2d((1, 4))
+        self.drop1 = nn.Dropout(drop_rate)
 
-        self.conv2 = nn.Conv1d(32, 64, kernel_size=5, padding=2)
-        self.bn2   = nn.BatchNorm1d(64)
-        self.pool2 = nn.MaxPool1d(2)
+        # Block 3: Separable convolution
+        self.conv3_dw = nn.Conv2d(F2, F2, (1, 16), padding=(0, 8), groups=F2,
+                                  bias=False)
+        self.conv3_pw = nn.Conv2d(F2, F2, (1, 1), bias=False)
+        self.bn3 = nn.BatchNorm2d(F2)
+        self.pool2 = nn.AvgPool2d((1, 8))
+        self.drop2 = nn.Dropout(drop_rate)
 
-        self.lstm = nn.LSTM(
-            input_size=64,
-            hidden_size=128,
-            num_layers=2,
-            batch_first=True,
-            dropout=0.3,
-            bidirectional=True
-        )
+        # Dynamically compute flat size via dummy forward pass
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1, n_channels, n_times)
+            dummy = self._forward_features(dummy)
+            flat_size = dummy.shape[1] * dummy.shape[2] * dummy.shape[3]
 
-        self.attention = AttentionLayer(256)  # 128*2 for bidirectional
+        # Classifier
+        self.classifier = nn.Linear(flat_size, num_classes)
 
-        self.classifier = nn.Sequential(
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Dropout(0.5),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(64, num_classes)
-        )
+    def _forward_features(self, x):
+        # Block 1: Temporal
+        x = self.bn1(self.conv1(x))
+
+        # Block 2: Depthwise spatial
+        x = F.elu(self.bn2(self.conv2(x)))
+        x = self.drop1(self.pool1(x))
+
+        # Block 3: Separable
+        x = self.conv3_dw(x)
+        x = F.elu(self.bn3(self.conv3_pw(x)))
+        x = self.drop2(self.pool2(x))
+
+        return x
 
     def forward(self, x):
-        x = x.permute(0, 2, 1)  # (batch, channels, timesteps) for CNN
-
-        x = F.relu(self.bn1(self.conv1(x)))
-        x = self.pool1(x)
-        x = F.relu(self.bn2(self.conv2(x)))
-        x = self.pool2(x)
-
-        x = x.permute(0, 2, 1)  # (batch, timesteps, features) for LSTM
-
-        lstm_out, _ = self.lstm(x)
-        context, attn_weights = self.attention(lstm_out)
-        return self.classifier(context)
+        x = self._forward_features(x)
+        x = x.flatten(start_dim=1)
+        return self.classifier(x)
 
 
-model = EEG_CNN_LSTM(
-    n_timesteps=n_timesteps,
+model = EEGNet_Motor(
     n_channels=n_channels,
+    n_times=n_times,
     num_classes=2
 ).to(device)
 
@@ -217,25 +214,6 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
 )
 
 
-class EarlyStopping:
-    def __init__(self, patience=15):
-        self.patience   = patience
-        self.counter    = 0
-        self.best_score = None
-        self.stop       = False
-        self.best_state = None
-
-    def __call__(self, score, model):
-        if self.best_score is None or score > self.best_score:
-            self.best_score = score
-            self.best_state = {k: v.clone().cpu() for k, v in model.state_dict().items()}
-            self.counter    = 0
-        else:
-            self.counter += 1
-            if self.counter >= self.patience:
-                self.stop = True
-
-
 early_stopping = EarlyStopping(patience=15)
 
 EPOCHS = 150
@@ -243,7 +221,7 @@ train_losses, train_accs = [], []
 val_losses,   val_accs   = [], []
 
 print(f"\n{'=' * 60}")
-print(f"  TRAINING CNN-LSTM ({EPOCHS} epochs max)")
+print(f"  TRAINING EEGNet-Motor CNN ({EPOCHS} epochs max)")
 print(f"{'=' * 60}")
 
 for epoch in range(EPOCHS):
@@ -340,7 +318,7 @@ print(classification_report(all_labels, all_preds,
 # Save model and results
 os.makedirs('models', exist_ok=True)
 
-model_path = 'models/lstm_model.pt'
+model_path = 'models/cnn_model.pt'
 torch.save(model.state_dict(), model_path)
 print(f"   Model saved: {model_path}")
 
@@ -354,7 +332,7 @@ results = {
     'val_accs': val_accs,
     'epochs_trained': len(train_losses),
 }
-results_path = 'models/lstm_results.pkl'
+results_path = 'models/cnn_results.pkl'
 with open(results_path, 'wb') as f:
     pickle.dump(results, f)
 print(f"   Results saved: {results_path}")
@@ -386,7 +364,7 @@ sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
             yticklabels=['Left', 'Right'], ax=axes[1, 0])
 axes[1, 0].set_xlabel('Predicted', fontsize=12)
 axes[1, 0].set_ylabel('True', fontsize=12)
-axes[1, 0].set_title(f'CNN-LSTM Confusion Matrix\nAccuracy: {test_acc:.2%}',
+axes[1, 0].set_title(f'EEGNet-Motor CNN Confusion Matrix\nAccuracy: {test_acc:.2%}',
                      fontsize=13, fontweight='bold')
 
 # Per-class accuracy
@@ -402,7 +380,7 @@ for bar, val in zip(bars, class_acc):
 axes[1, 1].grid(axis='y', alpha=0.3)
 
 plt.tight_layout()
-fig_path = 'models/lstm_visualization.png'
+fig_path = 'models/cnn_visualization.png'
 plt.savefig(fig_path, dpi=300, bbox_inches='tight')
 print(f"   Visualization saved: {fig_path}")
 
@@ -412,7 +390,7 @@ print(f"   Visualization saved: {fig_path}")
 print("\n" + "=" * 70)
 print("TRAINING SUMMARY")
 print("=" * 70)
-print(f"Model:            CNN-LSTM with Attention")
+print(f"Model:            EEGNet-Motor CNN")
 print(f"Parameters:       {total_params:,}")
 print(f"Training samples: {len(y_train)}")
 print(f"Test samples:     {len(y_test)}")

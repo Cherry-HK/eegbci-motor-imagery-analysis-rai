@@ -69,18 +69,15 @@ print(f"    Right hand (1): {test_right} ({test_right/len(y_test)*100:.1f}%)")
 # ============================================================================
 print("\n[Step 3/6] Training Logistic Regression classifier...")
 
-# Initialize model
-# Parameters optimized for BCI applications
 model = LogisticRegression(
-    penalty='l2',              # L2 regularization (Ridge)
-    C=1.0,                     # Regularization strength
-    solver='lbfgs',            # Optimization algorithm
-    max_iter=1000,             # Maximum iterations
-    random_state=42,           # For reproducibility
-    class_weight='balanced'    # Handle any class imbalance
+    penalty='l2',
+    C=1.0,
+    solver='lbfgs',
+    max_iter=1000,
+    random_state=42,
+    class_weight='balanced'
 )
 
-# Train the model
 model.fit(X_train, y_train)
 
 print(f"   Model trained successfully")
@@ -91,24 +88,21 @@ print(f"   Converged in {model.n_iter_[0]} iterations")
 # ============================================================================
 print("\n[Step 4/6] Performing 5-fold cross-validation...")
 
-# Stratified K-Fold to preserve class distribution
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
 cv_scores = cross_val_score(model, X_train, y_train, cv=cv, scoring='accuracy')
 
 print(f"  CV Scores: {[f'{s*100:.1f}%' for s in cv_scores]}")
-print(f"  Mean: {cv_scores.mean()*100:.2f}% ± {cv_scores.std()*100:.2f}%")
+print(f"  Mean: {cv_scores.mean()*100:.2f}% +/- {cv_scores.std()*100:.2f}%")
 
 # ============================================================================
 # 5. Evaluation on Test Set
 # ============================================================================
 print("\n[Step 5/6] Evaluating on test set...")
 
-# Predictions
 y_train_pred = model.predict(X_train)
 y_test_pred = model.predict(X_test)
 y_test_proba = model.predict_proba(X_test)[:, 1]
 
-# Metrics
 train_acc = accuracy_score(y_train, y_train_pred)
 test_acc = accuracy_score(y_test, y_test_pred)
 precision = precision_score(y_test, y_test_pred)
@@ -123,7 +117,6 @@ print(f"  Recall:            {recall*100:.2f}%")
 print(f"  F1-Score:          {f1*100:.2f}%")
 print(f"  ROC AUC:           {roc_auc:.3f}")
 
-# Confusion Matrix
 cm = confusion_matrix(y_test, y_test_pred)
 print(f"\n  Confusion Matrix:")
 print(f"                 Predicted")
@@ -131,7 +124,6 @@ print(f"                 Left  Right")
 print(f"    Actual Left   {cm[0,0]:3d}    {cm[0,1]:3d}")
 print(f"          Right   {cm[1,0]:3d}    {cm[1,1]:3d}")
 
-# Detailed Report
 print(f"\n  Classification Report:")
 print(classification_report(y_test, y_test_pred,
                           target_names=['Left Hand', 'Right Hand']))
@@ -141,16 +133,13 @@ print(classification_report(y_test, y_test_pred,
 # ============================================================================
 print("\n[Step 6/6] Saving model and results...")
 
-# Create models directory
 os.makedirs('models', exist_ok=True)
 
-# Save model
 model_path = 'models/logistic_regression_model.pkl'
 with open(model_path, 'wb') as f:
     pickle.dump(model, f)
 print(f"Model saved: {model_path}")
 
-# Save results
 results = {
     'train_accuracy': train_acc,
     'test_accuracy': test_acc,
@@ -184,10 +173,9 @@ ax.set(xticks=[0, 1], yticks=[0, 1],
        xlabel='Predicted', ylabel='Actual',
        title='Confusion Matrix')
 
-# Add text annotations
 for i in range(2):
     for j in range(2):
-        text = ax.text(j, i, cm[i, j], ha="center", va="center",
+        ax.text(j, i, cm[i, j], ha="center", va="center",
                       color="white" if cm[i, j] > cm.max()/2 else "black",
                       fontsize=20, fontweight='bold')
 
@@ -240,17 +228,12 @@ print(f"Model:            Logistic Regression")
 print(f"Features:         {X_train.shape[1]} CSP components")
 print(f"Training samples: {len(y_train)}")
 print(f"Test samples:     {len(y_test)}")
-print(f"CV Accuracy:      {cv_scores.mean()*100:.2f}% ± {cv_scores.std()*100:.2f}%")
+print(f"CV Accuracy:      {cv_scores.mean()*100:.2f}% +/- {cv_scores.std()*100:.2f}%")
 print(f"Test Accuracy:    {test_acc*100:.2f}%")
 print(f"Test F1-Score:    {f1*100:.2f}%")
 print(f"ROC AUC:          {roc_auc:.3f}")
 print("="*70)
 
-print("\n Training complete!")
-print("\nTo use the trained model:")
-print("  import pickle")
-print("  with open('models/logistic_regression_model.pkl', 'rb') as f:")
-print("      model = pickle.load(f)")
-print("  predictions = model.predict(new_csp_features)")
+print("\nTraining complete!")
 
 plt.show()

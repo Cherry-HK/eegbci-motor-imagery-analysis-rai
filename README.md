@@ -1,6 +1,6 @@
 ## Comparative Analysis of Classical and Deep Learning Models for Motor Imagery EEG Classification with a Training Application for Neuro-Rehabilitation
 
-### Team Members: 
+### Team Members:
 1. 65011255 Apisara Luengnaruemitchai
 2. 65011289 Cherry Hlaing Kyaw
 3. 65011302 Hermes Maryprasith
@@ -8,28 +8,62 @@
 
 ### Dataset
 This project uses the **EEG Motor Movement/Imagery Dataset (EEGMMIDB)** provided by **PhysioNet**.
+- **109 subjects**, 64-channel EEG
+- **Motor imagery runs**: R04, R08, R12 (left fist vs right fist)
+- **9 selected motor-cortex channels**: FC3, FCz, FC4, C3, Cz, C4, CP3, CPz, CP4
 
 **Dataset source:**
 https://physionet.org/content/eegmmidb/1.0.0/
 
-Due to size and licensing considerations, the dataset is **not included** in this repository and must be downloaded manually.
-
 ### Download Instructions
-1. Visit the PhysioNet dataset page: https://physionet.org/content/eegmmidb/1.0.0/
-2. Download and extract the dataset locally.
+1. Run the download script to fetch all 109 subjects via MNE:
+   ```bash
+   python src/download_dataset.py
+   ```
+2. Or visit the PhysioNet dataset page and download manually.
 
 ### Expected Directory Structure
-After downloading, place the dataset in the following directory structure:
 
 ```
 data/
-└── raw/
-    ├── S001/
-    │   ├── S001R01.edf
-    │   ├── S001R02.edf
-    │   ├── ...
-    │   └── S001R12.edf
-    ├── S002/
-    ├── ...
-    └── S109/
+└── MNE-eegbci-data/
+    └── files/
+        └── eegmmidb/
+            └── 1.0.0/
+                ├── S001/
+                │   ├── S001R04.edf
+                │   ├── S001R08.edf
+                │   └── S001R12.edf
+                ├── S002/
+                ├── ...
+                └── S109/
+```
+
+### Usage
+
+```bash
+# 1. Download dataset (all 109 subjects)
+python src/download_dataset.py
+
+# 2. Preprocess: bandpass filter, epoch, CSP features
+python src/preprocessing.py
+
+# 3. Train models
+python src/train_logistic_regression.py
+python src/train_knn.py
+python src/train_cnn.py
+python src/train_lstm.py
+```
+
+### Models
+| Model | Type | Features |
+|-------|------|----------|
+| Logistic Regression | Classical ML | CSP |
+| KNN | Classical ML | CSP + Raw |
+| EEGNet-Motor CNN | Deep Learning | Raw EEG |
+| CNN-LSTM with Attention | Deep Learning | Raw EEG |
+
+### Requirements
+```
+pip install -r requirements.txt
 ```
