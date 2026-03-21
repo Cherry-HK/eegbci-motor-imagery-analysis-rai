@@ -11,6 +11,9 @@ venv/
 .venv/
 ENV/
 
+# Documentation
+docs/
+
 # Jupyter Notebook
 .ipynb_checkpoints/
 *.ipynb_checkpoints
@@ -31,18 +34,12 @@ MNE-Python-*.sh
 Thumbs.db
 
 # Dataset (PhysioNet EEGMMIDB)
-data/raw/*
-!data/raw/.gitkeep
-
-# MNE-Python downloaded datasets
-data/MNE-eegbci-data/
+data/
 
 # Generated numpy files (preprocessed data)
 *.npy
 
 # Trained models and results
-models/*
-!models/.gitkeep
 *.pkl
 *.h5
 *.pt
