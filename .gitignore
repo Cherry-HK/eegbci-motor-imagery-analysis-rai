@@ -50,6 +50,8 @@ subjects.npy
 *.h5
 *.pt
 *.pth
+*.csv
+*.txt
 
 # Visualization outputs
 *.png

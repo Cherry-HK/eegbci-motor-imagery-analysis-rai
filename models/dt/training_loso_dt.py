@@ -6,9 +6,7 @@ import numpy as np
 from mne.decoding import CSP
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+from sklearn.tree import DecisionTreeClassifier
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -16,9 +14,8 @@ import matplotlib.pyplot as plt
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "knn_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "dt", "dt_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy"))
 y = np.load(os.path.join(DATA_DIR, "y.npy"))
@@ -31,15 +28,16 @@ print("Number of subjects:", len(np.unique(subjects)))
 print("Results directory:", RESULTS_DIR)
 
 
-def run_loso_knn(
+def run_loso_dt(
     X,
     y,
     subjects,
     *,
-    n_neighbors=5,
-    weights="distance",
-    metric="minkowski",
-    p=2,
+    criterion="gini",
+    max_depth=5,
+    min_samples_split=10,
+    min_samples_leaf=5,
+    class_weight="balanced",
     csp_components=6,
     progress_label="",
 ):
@@ -76,19 +74,13 @@ def run_loso_knn(
         X_train_csp = csp.fit_transform(X_train, y_train)
         X_test_csp = csp.transform(X_test)
 
-        model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                (
-                    "knn",
-                    KNeighborsClassifier(
-                        n_neighbors=n_neighbors,
-                        weights=weights,
-                        metric=metric,
-                        p=p,
-                    ),
-                ),
-            ]
+        model = DecisionTreeClassifier(
+            criterion=criterion,
+            max_depth=max_depth,
+            min_samples_split=min_samples_split,
+            min_samples_leaf=min_samples_leaf,
+            class_weight=class_weight,
+            random_state=42,
         )
 
         model.fit(X_train_csp, y_train)
@@ -118,10 +110,11 @@ def run_loso_knn(
         )
 
     return {
-        "n_neighbors": n_neighbors,
-        "weights": weights,
-        "metric": metric,
-        "p": p,
+        "criterion": criterion,
+        "max_depth": max_depth,
+        "min_samples_split": min_samples_split,
+        "min_samples_leaf": min_samples_leaf,
+        "class_weight": class_weight,
         "csp_components": csp_components,
         "mean_accuracy": float(np.mean(accuracies)),
         "std_accuracy": float(np.std(accuracies)),
@@ -137,10 +130,11 @@ def write_summary_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "n_neighbors",
-        "weights",
-        "metric",
-        "p",
+        "criterion",
+        "max_depth",
+        "min_samples_split",
+        "min_samples_leaf",
+        "class_weight",
         "csp_components",
         "mean_accuracy",
         "std_accuracy",
@@ -159,10 +153,11 @@ def write_fold_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "n_neighbors",
-        "weights",
-        "metric",
-        "p",
+        "criterion",
+        "max_depth",
+        "min_samples_split",
+        "min_samples_leaf",
+        "class_weight",
         "csp_components",
         "fold",
         "subject",
@@ -183,7 +178,7 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.plot(parameter_values, metric_values, marker="o", linewidth=2)
     plt.xlabel(parameter_name)
     plt.ylabel("Mean Accuracy")
-    plt.title(f"KNN Parameter Study: {parameter_name}")
+    plt.title(f"DT Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -248,14 +243,16 @@ def run_parameter_study(parameter_name, values, base_config):
     for value_index, value in enumerate(values, 1):
         config = base_config.copy()
 
-        if parameter_name == "n_neighbors":
-            config["n_neighbors"] = value
-        elif parameter_name == "weights":
-            config["weights"] = value
-        elif parameter_name == "metric":
-            config["metric"] = value
-        elif parameter_name == "p":
-            config["p"] = value
+        if parameter_name == "criterion":
+            config["criterion"] = value
+        elif parameter_name == "max_depth":
+            config["max_depth"] = value
+        elif parameter_name == "min_samples_split":
+            config["min_samples_split"] = value
+        elif parameter_name == "min_samples_leaf":
+            config["min_samples_leaf"] = value
+        elif parameter_name == "class_weight":
+            config["class_weight"] = value
         elif parameter_name == "csp_components":
             config["csp_components"] = value
         else:
@@ -263,15 +260,16 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_knn(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_dt(X, y, subjects, progress_label=progress_label, **config)
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "n_neighbors": result["n_neighbors"],
-            "weights": result["weights"],
-            "metric": result["metric"],
-            "p": result["p"],
+            "criterion": result["criterion"],
+            "max_depth": result["max_depth"],
+            "min_samples_split": result["min_samples_split"],
+            "min_samples_leaf": result["min_samples_leaf"],
+            "class_weight": result["class_weight"],
             "csp_components": result["csp_components"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
@@ -285,10 +283,11 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "n_neighbors": result["n_neighbors"],
-                    "weights": result["weights"],
-                    "metric": result["metric"],
-                    "p": result["p"],
+                    "criterion": result["criterion"],
+                    "max_depth": result["max_depth"],
+                    "min_samples_split": result["min_samples_split"],
+                    "min_samples_leaf": result["min_samples_leaf"],
+                    "class_weight": result["class_weight"],
                     "csp_components": result["csp_components"],
                     **fold_row,
                 }
@@ -335,33 +334,39 @@ def run_parameter_study(parameter_name, values, base_config):
 # 2. PARAMETER STUDY CONFIGURATION
 # ==========================================================
 BASE_CONFIG = {
-    "n_neighbors": 5,
-    "weights": "distance",
-    "metric": "minkowski",
-    "p": 2,
+    "criterion": "gini",
+    "max_depth": 5,
+    "min_samples_split": 10,
+    "min_samples_leaf": 5,
+    "class_weight": "balanced",
     "csp_components": 6,
 }
 
 PARAMETER_STUDIES = [
     {
-        "name": "n_neighbors",
-        "values": [1, 3, 5, 7, 9, 11],
-        "overrides": {"weights": "distance", "metric": "minkowski", "p": 2},
+        "name": "criterion",
+        "values": ["gini", "entropy", "log_loss"],
+        "overrides": {},
     },
     {
-        "name": "weights",
-        "values": ["uniform", "distance"],
-        "overrides": {"n_neighbors": 5, "metric": "minkowski", "p": 2},
+        "name": "max_depth",
+        "values": [3, 5, 7, 10, None],
+        "overrides": {"criterion": "gini", "min_samples_split": 10, "min_samples_leaf": 5},
     },
     {
-        "name": "metric",
-        "values": ["euclidean", "manhattan", "minkowski"],
-        "overrides": {"n_neighbors": 5, "weights": "distance"},
+        "name": "min_samples_split",
+        "values": [2, 5, 10, 20],
+        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_leaf": 5},
     },
     {
-        "name": "p",
-        "values": [1, 2, 3],
-        "overrides": {"n_neighbors": 5, "weights": "distance", "metric": "minkowski"},
+        "name": "min_samples_leaf",
+        "values": [1, 2, 5, 10],
+        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_split": 10},
+    },
+    {
+        "name": "class_weight",
+        "values": [None, "balanced"],
+        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_split": 10, "min_samples_leaf": 5},
     },
 ]
 

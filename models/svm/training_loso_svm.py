@@ -6,7 +6,9 @@ import numpy as np
 from mne.decoding import CSP
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -14,9 +16,8 @@ import matplotlib.pyplot as plt
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "dt_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "svm", "svm_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy"))
 y = np.load(os.path.join(DATA_DIR, "y.npy"))
@@ -29,15 +30,16 @@ print("Number of subjects:", len(np.unique(subjects)))
 print("Results directory:", RESULTS_DIR)
 
 
-def run_loso_dt(
+def run_loso_svm(
     X,
     y,
     subjects,
     *,
-    criterion="gini",
-    max_depth=5,
-    min_samples_split=10,
-    min_samples_leaf=5,
+    kernel="linear",
+    c_value=1.0,
+    gamma="scale",
+    degree=3,
+    coef0=0.0,
     class_weight="balanced",
     csp_components=6,
     progress_label="",
@@ -75,23 +77,33 @@ def run_loso_dt(
         X_train_csp = csp.fit_transform(X_train, y_train)
         X_test_csp = csp.transform(X_test)
 
-        model = DecisionTreeClassifier(
-            criterion=criterion,
-            max_depth=max_depth,
-            min_samples_split=min_samples_split,
-            min_samples_leaf=min_samples_leaf,
-            class_weight=class_weight,
-            random_state=42,
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "svm",
+                    SVC(
+                        kernel=kernel,
+                        C=c_value,
+                        gamma=gamma,
+                        degree=degree,
+                        coef0=coef0,
+                        class_weight=class_weight,
+                        probability=False,
+                        random_state=42,
+                    ),
+                ),
+            ]
         )
 
         model.fit(X_train_csp, y_train)
 
         y_pred = model.predict(X_test_csp)
-        y_prob = model.predict_proba(X_test_csp)[:, 1]
+        y_score = model.decision_function(X_test_csp)
 
         acc = accuracy_score(y_test, y_pred)
         f1 = f1_score(y_test, y_pred, zero_division=0)
-        auc = roc_auc_score(y_test, y_prob)
+        auc = roc_auc_score(y_test, y_score)
         cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
 
         accuracies.append(acc)
@@ -111,10 +123,11 @@ def run_loso_dt(
         )
 
     return {
-        "criterion": criterion,
-        "max_depth": max_depth,
-        "min_samples_split": min_samples_split,
-        "min_samples_leaf": min_samples_leaf,
+        "kernel": kernel,
+        "C": c_value,
+        "gamma": gamma,
+        "degree": degree,
+        "coef0": coef0,
         "class_weight": class_weight,
         "csp_components": csp_components,
         "mean_accuracy": float(np.mean(accuracies)),
@@ -131,10 +144,11 @@ def write_summary_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "criterion",
-        "max_depth",
-        "min_samples_split",
-        "min_samples_leaf",
+        "kernel",
+        "C",
+        "gamma",
+        "degree",
+        "coef0",
         "class_weight",
         "csp_components",
         "mean_accuracy",
@@ -154,10 +168,11 @@ def write_fold_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "criterion",
-        "max_depth",
-        "min_samples_split",
-        "min_samples_leaf",
+        "kernel",
+        "C",
+        "gamma",
+        "degree",
+        "coef0",
         "class_weight",
         "csp_components",
         "fold",
@@ -179,7 +194,7 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.plot(parameter_values, metric_values, marker="o", linewidth=2)
     plt.xlabel(parameter_name)
     plt.ylabel("Mean Accuracy")
-    plt.title(f"DT Parameter Study: {parameter_name}")
+    plt.title(f"SVM Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -244,14 +259,16 @@ def run_parameter_study(parameter_name, values, base_config):
     for value_index, value in enumerate(values, 1):
         config = base_config.copy()
 
-        if parameter_name == "criterion":
-            config["criterion"] = value
-        elif parameter_name == "max_depth":
-            config["max_depth"] = value
-        elif parameter_name == "min_samples_split":
-            config["min_samples_split"] = value
-        elif parameter_name == "min_samples_leaf":
-            config["min_samples_leaf"] = value
+        if parameter_name == "C":
+            config["c_value"] = value
+        elif parameter_name == "kernel":
+            config["kernel"] = value
+        elif parameter_name == "gamma":
+            config["gamma"] = value
+        elif parameter_name == "degree":
+            config["degree"] = value
+        elif parameter_name == "coef0":
+            config["coef0"] = value
         elif parameter_name == "class_weight":
             config["class_weight"] = value
         elif parameter_name == "csp_components":
@@ -261,15 +278,16 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_dt(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_svm(X, y, subjects, progress_label=progress_label, **config)
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "criterion": result["criterion"],
-            "max_depth": result["max_depth"],
-            "min_samples_split": result["min_samples_split"],
-            "min_samples_leaf": result["min_samples_leaf"],
+            "kernel": result["kernel"],
+            "C": result["C"],
+            "gamma": result["gamma"],
+            "degree": result["degree"],
+            "coef0": result["coef0"],
             "class_weight": result["class_weight"],
             "csp_components": result["csp_components"],
             "mean_accuracy": result["mean_accuracy"],
@@ -284,10 +302,11 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "criterion": result["criterion"],
-                    "max_depth": result["max_depth"],
-                    "min_samples_split": result["min_samples_split"],
-                    "min_samples_leaf": result["min_samples_leaf"],
+                    "kernel": result["kernel"],
+                    "C": result["C"],
+                    "gamma": result["gamma"],
+                    "degree": result["degree"],
+                    "coef0": result["coef0"],
                     "class_weight": result["class_weight"],
                     "csp_components": result["csp_components"],
                     **fold_row,
@@ -335,39 +354,45 @@ def run_parameter_study(parameter_name, values, base_config):
 # 2. PARAMETER STUDY CONFIGURATION
 # ==========================================================
 BASE_CONFIG = {
-    "criterion": "gini",
-    "max_depth": 5,
-    "min_samples_split": 10,
-    "min_samples_leaf": 5,
+    "kernel": "linear",
+    "c_value": 1.0,
+    "gamma": "scale",
+    "degree": 3,
+    "coef0": 0.0,
     "class_weight": "balanced",
     "csp_components": 6,
 }
 
 PARAMETER_STUDIES = [
     {
-        "name": "criterion",
-        "values": ["gini", "entropy", "log_loss"],
+        "name": "kernel",
+        "values": ["linear", "rbf", "poly", "sigmoid"],
         "overrides": {},
     },
     {
-        "name": "max_depth",
-        "values": [3, 5, 7, 10, None],
-        "overrides": {"criterion": "gini", "min_samples_split": 10, "min_samples_leaf": 5},
-    },
-    {
-        "name": "min_samples_split",
-        "values": [2, 5, 10, 20],
-        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_leaf": 5},
-    },
-    {
-        "name": "min_samples_leaf",
-        "values": [1, 2, 5, 10],
-        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_split": 10},
+        "name": "C",
+        "values": [0.1, 1.0, 10.0, 100.0],
+        "overrides": {"kernel": "linear"},
     },
     {
         "name": "class_weight",
         "values": [None, "balanced"],
-        "overrides": {"criterion": "gini", "max_depth": 5, "min_samples_split": 10, "min_samples_leaf": 5},
+        "overrides": {"kernel": "linear", "c_value": 1.0},
+    },
+    {
+        "name": "gamma",
+        "values": ["scale", "auto", 0.01, 0.1, 1.0],
+        "overrides": {"kernel": "rbf", "c_value": 1.0},
+    },
+    {
+        "name": "degree",
+        "values": [2, 3, 4, 5],
+        "overrides": {"kernel": "poly", "c_value": 1.0, "gamma": "scale", "coef0": 0.0},
+    },
+    {
+        "name": "coef0",
+        "values": [0.0, 0.5, 1.0, 2.0],
+        "overrides": {"kernel": "poly", "c_value": 1.0, "gamma": "scale", "degree": 3},
     },
 ]
 

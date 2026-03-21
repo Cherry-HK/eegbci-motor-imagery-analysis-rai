@@ -3,12 +3,12 @@ import os
 
 import matplotlib
 import numpy as np
-from mne.decoding import CSP
+from pyriemann.estimation import Covariances
+from pyriemann.tangentspace import TangentSpace
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -16,9 +16,8 @@ import matplotlib.pyplot as plt
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "lr_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "riemann", "riemann_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy"))
 y = np.load(os.path.join(DATA_DIR, "y.npy"))
@@ -31,20 +30,19 @@ print("Number of subjects:", len(np.unique(subjects)))
 print("Results directory:", RESULTS_DIR)
 
 
-def run_loso_lr(
+def run_loso_riemann(
     X,
     y,
     subjects,
     *,
-    penalty="l2",
+    cov_estimator="lwf",
+    ts_metric="riemann",
     c_value=1.0,
     solver="lbfgs",
     class_weight="balanced",
-    l1_ratio=None,
-    csp_components=6,
     progress_label="",
 ):
-    """Run LOSO with CSP inside each fold and return summary metrics."""
+    """Run LOSO with a Riemannian pipeline and return summary metrics."""
     logo = LeaveOneGroupOut()
 
     accuracies = []
@@ -67,27 +65,16 @@ def run_loso_lr(
             f"(test subject {test_subject})"
         )
 
-        csp = CSP(
-            n_components=csp_components,
-            reg="ledoit_wolf",
-            log=True,
-            norm_trace=False,
-        )
-
-        X_train_csp = csp.fit_transform(X_train, y_train)
-        X_test_csp = csp.transform(X_test)
-
         model = Pipeline(
             [
-                ("scaler", StandardScaler()),
+                ("cov", Covariances(estimator=cov_estimator)),
+                ("ts", TangentSpace(metric=ts_metric)),
                 (
                     "lr",
                     LogisticRegression(
-                        penalty=penalty,
                         C=c_value,
                         solver=solver,
                         class_weight=class_weight,
-                        l1_ratio=l1_ratio,
                         max_iter=1000,
                         random_state=42,
                     ),
@@ -95,10 +82,10 @@ def run_loso_lr(
             ]
         )
 
-        model.fit(X_train_csp, y_train)
+        model.fit(X_train, y_train)
 
-        y_pred = model.predict(X_test_csp)
-        y_score = model.decision_function(X_test_csp)
+        y_pred = model.predict(X_test)
+        y_score = model.decision_function(X_test)
 
         acc = accuracy_score(y_test, y_pred)
         f1 = f1_score(y_test, y_pred, zero_division=0)
@@ -122,12 +109,11 @@ def run_loso_lr(
         )
 
     return {
-        "penalty": penalty,
+        "cov_estimator": cov_estimator,
+        "ts_metric": ts_metric,
         "C": c_value,
         "solver": solver,
         "class_weight": class_weight,
-        "l1_ratio": l1_ratio,
-        "csp_components": csp_components,
         "mean_accuracy": float(np.mean(accuracies)),
         "std_accuracy": float(np.std(accuracies)),
         "mean_f1": float(np.mean(f1_scores)),
@@ -142,12 +128,11 @@ def write_summary_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "penalty",
+        "cov_estimator",
+        "ts_metric",
         "C",
         "solver",
         "class_weight",
-        "l1_ratio",
-        "csp_components",
         "mean_accuracy",
         "std_accuracy",
         "mean_f1",
@@ -165,12 +150,11 @@ def write_fold_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "penalty",
+        "cov_estimator",
+        "ts_metric",
         "C",
         "solver",
         "class_weight",
-        "l1_ratio",
-        "csp_components",
         "fold",
         "subject",
         "accuracy",
@@ -190,7 +174,7 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.plot(parameter_values, metric_values, marker="o", linewidth=2)
     plt.xlabel(parameter_name)
     plt.ylabel("Mean Accuracy")
-    plt.title(f"LR Parameter Study: {parameter_name}")
+    plt.title(f"Riemann Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -240,6 +224,7 @@ def make_safe_filename(value):
 def run_parameter_study(parameter_name, values, base_config):
     summary_rows = []
     fold_rows = []
+    skipped_rows = []
     plot_labels = []
     plot_scores = []
     parameter_dir = os.path.join(RESULTS_DIR, parameter_name)
@@ -255,34 +240,47 @@ def run_parameter_study(parameter_name, values, base_config):
     for value_index, value in enumerate(values, 1):
         config = base_config.copy()
 
-        if parameter_name == "penalty":
-            config["penalty"] = value
+        if parameter_name == "cov_estimator":
+            config["cov_estimator"] = value
+        elif parameter_name == "ts_metric":
+            config["ts_metric"] = value
         elif parameter_name == "C":
             config["c_value"] = value
         elif parameter_name == "solver":
             config["solver"] = value
         elif parameter_name == "class_weight":
             config["class_weight"] = value
-        elif parameter_name == "l1_ratio":
-            config["l1_ratio"] = value
-        elif parameter_name == "csp_components":
-            config["csp_components"] = value
         else:
             raise ValueError(f"Unsupported parameter: {parameter_name}")
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_lr(X, y, subjects, progress_label=progress_label, **config)
+        try:
+            result = run_loso_riemann(X, y, subjects, progress_label=progress_label, **config)
+        except ValueError as exc:
+            skipped_rows.append(
+                {
+                    "parameter_name": parameter_name,
+                    "parameter_value": value,
+                    "cov_estimator": config["cov_estimator"],
+                    "ts_metric": config["ts_metric"],
+                    "C": config["c_value"],
+                    "solver": config["solver"],
+                    "class_weight": config["class_weight"],
+                    "error": str(exc),
+                }
+            )
+            print(f"Skipping {progress_label} because the configuration is invalid: {exc}")
+            continue
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "penalty": result["penalty"],
+            "cov_estimator": result["cov_estimator"],
+            "ts_metric": result["ts_metric"],
             "C": result["C"],
             "solver": result["solver"],
             "class_weight": result["class_weight"],
-            "l1_ratio": result["l1_ratio"],
-            "csp_components": result["csp_components"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
             "mean_f1": result["mean_f1"],
@@ -295,12 +293,11 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "penalty": result["penalty"],
+                    "cov_estimator": result["cov_estimator"],
+                    "ts_metric": result["ts_metric"],
                     "C": result["C"],
                     "solver": result["solver"],
                     "class_weight": result["class_weight"],
-                    "l1_ratio": result["l1_ratio"],
-                    "csp_components": result["csp_components"],
                     **fold_row,
                 }
             )
@@ -328,17 +325,43 @@ def run_parameter_study(parameter_name, values, base_config):
 
     summary_csv_path = os.path.join(parameter_dir, f"summary_{parameter_name}.csv")
     fold_csv_path = os.path.join(parameter_dir, f"fold_results_{parameter_name}.csv")
+    skipped_csv_path = os.path.join(parameter_dir, f"skipped_{parameter_name}.csv")
     plot_path = os.path.join(parameter_dir, f"plot_{parameter_name}.png")
 
     write_summary_csv(summary_csv_path, summary_rows)
     write_fold_csv(fold_csv_path, fold_rows)
-    plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    if skipped_rows:
+        with open(skipped_csv_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(
+                csvfile,
+                fieldnames=[
+                    "parameter_name",
+                    "parameter_value",
+                    "cov_estimator",
+                    "ts_metric",
+                    "C",
+                    "solver",
+                    "class_weight",
+                    "error",
+                ],
+            )
+            writer.writeheader()
+            for row in skipped_rows:
+                writer.writerow(row)
+
+    if summary_rows:
+        plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    else:
+        print("No valid results were produced for this parameter study.")
+        return
 
     best_row = max(summary_rows, key=lambda row: row["mean_accuracy"])
     print("\nBest result for", parameter_name)
     print(best_row)
     print("Saved summary to:", summary_csv_path)
     print("Saved fold results to:", fold_csv_path)
+    if skipped_rows:
+        print("Saved skipped configurations to:", skipped_csv_path)
     print("Saved plot to:", plot_path)
 
 
@@ -346,39 +369,38 @@ def run_parameter_study(parameter_name, values, base_config):
 # 2. PARAMETER STUDY CONFIGURATION
 # ==========================================================
 BASE_CONFIG = {
-    "penalty": "l2",
+    "cov_estimator": "lwf",
+    "ts_metric": "riemann",
     "c_value": 1.0,
     "solver": "lbfgs",
     "class_weight": "balanced",
-    "l1_ratio": None,
-    "csp_components": 6,
 }
 
 PARAMETER_STUDIES = [
     {
-        "name": "solver",
-        "values": ["lbfgs", "liblinear", "saga"],
-        "overrides": {"penalty": "l2"},
+        "name": "cov_estimator",
+        "values": ["lwf", "oas"],
+        "overrides": {},
+    },
+    {
+        "name": "ts_metric",
+        "values": ["riemann", "logeuclid", "euclid"],
+        "overrides": {"cov_estimator": "lwf"},
     },
     {
         "name": "C",
         "values": [0.1, 1.0, 10.0, 100.0],
-        "overrides": {"solver": "lbfgs", "penalty": "l2"},
+        "overrides": {"cov_estimator": "lwf", "ts_metric": "riemann", "solver": "lbfgs"},
+    },
+    {
+        "name": "solver",
+        "values": ["lbfgs", "liblinear", "saga"],
+        "overrides": {"cov_estimator": "lwf", "ts_metric": "riemann", "c_value": 1.0},
     },
     {
         "name": "class_weight",
         "values": [None, "balanced"],
-        "overrides": {"solver": "lbfgs", "penalty": "l2", "c_value": 1.0},
-    },
-    {
-        "name": "penalty",
-        "values": ["l1", "l2"],
-        "overrides": {"solver": "liblinear", "c_value": 1.0},
-    },
-    {
-        "name": "l1_ratio",
-        "values": [0.2, 0.5, 0.8],
-        "overrides": {"solver": "saga", "penalty": "elasticnet", "c_value": 1.0},
+        "overrides": {"cov_estimator": "lwf", "ts_metric": "riemann", "c_value": 1.0, "solver": "lbfgs"},
     },
 ]
 

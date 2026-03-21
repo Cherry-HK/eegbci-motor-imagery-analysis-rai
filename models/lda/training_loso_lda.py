@@ -4,11 +4,9 @@ import os
 import matplotlib
 import numpy as np
 from mne.decoding import CSP
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
-from sklearn.svm import SVC
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -16,9 +14,8 @@ import matplotlib.pyplot as plt
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "svm_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "lda", "lda_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy"))
 y = np.load(os.path.join(DATA_DIR, "y.npy"))
@@ -31,17 +28,13 @@ print("Number of subjects:", len(np.unique(subjects)))
 print("Results directory:", RESULTS_DIR)
 
 
-def run_loso_svm(
+def run_loso_lda(
     X,
     y,
     subjects,
     *,
-    kernel="linear",
-    c_value=1.0,
-    gamma="scale",
-    degree=3,
-    coef0=0.0,
-    class_weight="balanced",
+    solver="lsqr",
+    shrinkage="auto",
     csp_components=6,
     progress_label="",
 ):
@@ -78,23 +71,9 @@ def run_loso_svm(
         X_train_csp = csp.fit_transform(X_train, y_train)
         X_test_csp = csp.transform(X_test)
 
-        model = Pipeline(
-            [
-                ("scaler", StandardScaler()),
-                (
-                    "svm",
-                    SVC(
-                        kernel=kernel,
-                        C=c_value,
-                        gamma=gamma,
-                        degree=degree,
-                        coef0=coef0,
-                        class_weight=class_weight,
-                        probability=False,
-                        random_state=42,
-                    ),
-                ),
-            ]
+        model = LinearDiscriminantAnalysis(
+            solver=solver,
+            shrinkage=shrinkage,
         )
 
         model.fit(X_train_csp, y_train)
@@ -124,12 +103,8 @@ def run_loso_svm(
         )
 
     return {
-        "kernel": kernel,
-        "C": c_value,
-        "gamma": gamma,
-        "degree": degree,
-        "coef0": coef0,
-        "class_weight": class_weight,
+        "solver": solver,
+        "shrinkage": shrinkage,
         "csp_components": csp_components,
         "mean_accuracy": float(np.mean(accuracies)),
         "std_accuracy": float(np.std(accuracies)),
@@ -145,12 +120,8 @@ def write_summary_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "kernel",
-        "C",
-        "gamma",
-        "degree",
-        "coef0",
-        "class_weight",
+        "solver",
+        "shrinkage",
         "csp_components",
         "mean_accuracy",
         "std_accuracy",
@@ -169,12 +140,8 @@ def write_fold_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "kernel",
-        "C",
-        "gamma",
-        "degree",
-        "coef0",
-        "class_weight",
+        "solver",
+        "shrinkage",
         "csp_components",
         "fold",
         "subject",
@@ -195,7 +162,7 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.plot(parameter_values, metric_values, marker="o", linewidth=2)
     plt.xlabel(parameter_name)
     plt.ylabel("Mean Accuracy")
-    plt.title(f"SVM Parameter Study: {parameter_name}")
+    plt.title(f"LDA Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -260,18 +227,10 @@ def run_parameter_study(parameter_name, values, base_config):
     for value_index, value in enumerate(values, 1):
         config = base_config.copy()
 
-        if parameter_name == "C":
-            config["c_value"] = value
-        elif parameter_name == "kernel":
-            config["kernel"] = value
-        elif parameter_name == "gamma":
-            config["gamma"] = value
-        elif parameter_name == "degree":
-            config["degree"] = value
-        elif parameter_name == "coef0":
-            config["coef0"] = value
-        elif parameter_name == "class_weight":
-            config["class_weight"] = value
+        if parameter_name == "solver":
+            config["solver"] = value
+        elif parameter_name == "shrinkage":
+            config["shrinkage"] = value
         elif parameter_name == "csp_components":
             config["csp_components"] = value
         else:
@@ -279,17 +238,13 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_svm(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_lda(X, y, subjects, progress_label=progress_label, **config)
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "kernel": result["kernel"],
-            "C": result["C"],
-            "gamma": result["gamma"],
-            "degree": result["degree"],
-            "coef0": result["coef0"],
-            "class_weight": result["class_weight"],
+            "solver": result["solver"],
+            "shrinkage": result["shrinkage"],
             "csp_components": result["csp_components"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
@@ -303,12 +258,8 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "kernel": result["kernel"],
-                    "C": result["C"],
-                    "gamma": result["gamma"],
-                    "degree": result["degree"],
-                    "coef0": result["coef0"],
-                    "class_weight": result["class_weight"],
+                    "solver": result["solver"],
+                    "shrinkage": result["shrinkage"],
                     "csp_components": result["csp_components"],
                     **fold_row,
                 }
@@ -355,45 +306,26 @@ def run_parameter_study(parameter_name, values, base_config):
 # 2. PARAMETER STUDY CONFIGURATION
 # ==========================================================
 BASE_CONFIG = {
-    "kernel": "linear",
-    "c_value": 1.0,
-    "gamma": "scale",
-    "degree": 3,
-    "coef0": 0.0,
-    "class_weight": "balanced",
+    "solver": "lsqr",
+    "shrinkage": "auto",
     "csp_components": 6,
 }
 
 PARAMETER_STUDIES = [
     {
-        "name": "kernel",
-        "values": ["linear", "rbf", "poly", "sigmoid"],
-        "overrides": {},
+        "name": "solver",
+        "values": ["svd", "lsqr", "eigen"],
+        "overrides": {"shrinkage": None},
     },
     {
-        "name": "C",
-        "values": [0.1, 1.0, 10.0, 100.0],
-        "overrides": {"kernel": "linear"},
+        "name": "shrinkage",
+        "values": [None, "auto", 0.1, 0.5, 0.9],
+        "overrides": {"solver": "lsqr"},
     },
     {
-        "name": "class_weight",
-        "values": [None, "balanced"],
-        "overrides": {"kernel": "linear", "c_value": 1.0},
-    },
-    {
-        "name": "gamma",
-        "values": ["scale", "auto", 0.01, 0.1, 1.0],
-        "overrides": {"kernel": "rbf", "c_value": 1.0},
-    },
-    {
-        "name": "degree",
-        "values": [2, 3, 4, 5],
-        "overrides": {"kernel": "poly", "c_value": 1.0, "gamma": "scale", "coef0": 0.0},
-    },
-    {
-        "name": "coef0",
-        "values": [0.0, 0.5, 1.0, 2.0],
-        "overrides": {"kernel": "poly", "c_value": 1.0, "gamma": "scale", "degree": 3},
+        "name": "csp_components",
+        "values": [4, 6, 8, 10],
+        "overrides": {"solver": "lsqr", "shrinkage": "auto"},
     },
 ]
 

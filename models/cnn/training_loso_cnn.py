@@ -23,9 +23,8 @@ except ImportError:
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "cnn_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "cnn", "cnn_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy")).astype(np.float32)
 y = np.load(os.path.join(DATA_DIR, "y.npy")).astype(np.int64)
@@ -162,8 +161,10 @@ def train_one_fold(
         torch.cuda.synchronize()
 
     train_start = time.perf_counter()
+    epoch_losses = []
 
-    for _ in range(config["epochs"]):
+    for epoch in range(1, config["epochs"] + 1):
+        batch_losses = []
         for batch_x, batch_y in train_loader:
             batch_x = batch_x.to(DEVICE)
             batch_y = batch_y.to(DEVICE)
@@ -173,6 +174,13 @@ def train_one_fold(
             loss = criterion(logits, batch_y)
             loss.backward()
             optimizer.step()
+            batch_losses.append(float(loss.item()))
+        epoch_losses.append(
+            {
+                "epoch": epoch,
+                "train_loss": float(np.mean(batch_losses)) if batch_losses else None,
+            }
+        )
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -233,6 +241,8 @@ def train_one_fold(
         "num_parameters": num_parameters,
         "train_memory_delta_mb": train_memory_delta_mb,
         "peak_gpu_memory_mb": peak_gpu_memory_mb,
+        "epoch_losses": epoch_losses,
+        "final_train_loss": epoch_losses[-1]["train_loss"] if epoch_losses else None,
     }
 
 
@@ -268,6 +278,8 @@ def run_loso_cnn(
     parameter_counts = []
     train_memory_deltas = []
     peak_gpu_memories = []
+    final_train_losses = []
+    loss_rows = []
 
     total_folds = len(np.unique(subjects))
 
@@ -314,6 +326,8 @@ def run_loso_cnn(
             train_memory_deltas.append(result["train_memory_delta_mb"])
         if result["peak_gpu_memory_mb"] is not None:
             peak_gpu_memories.append(result["peak_gpu_memory_mb"])
+        if result["final_train_loss"] is not None:
+            final_train_losses.append(result["final_train_loss"])
 
         fold_rows.append(
             {
@@ -329,8 +343,18 @@ def run_loso_cnn(
                 "num_parameters": result["num_parameters"],
                 "train_memory_delta_mb": result["train_memory_delta_mb"],
                 "peak_gpu_memory_mb": result["peak_gpu_memory_mb"],
+                "final_train_loss": result["final_train_loss"],
             }
         )
+        for epoch_row in result["epoch_losses"]:
+            loss_rows.append(
+                {
+                    "fold": fold,
+                    "subject": test_subject,
+                    "epoch": epoch_row["epoch"],
+                    "train_loss": epoch_row["train_loss"],
+                }
+            )
 
     return {
         "temporal_filters": temporal_filters,
@@ -354,7 +378,9 @@ def run_loso_cnn(
         "mean_num_parameters": float(np.mean(parameter_counts)),
         "mean_train_memory_delta_mb": float(np.mean(train_memory_deltas)) if train_memory_deltas else None,
         "mean_peak_gpu_memory_mb": float(np.mean(peak_gpu_memories)) if peak_gpu_memories else None,
+        "mean_final_train_loss": float(np.mean(final_train_losses)) if final_train_losses else None,
         "fold_rows": fold_rows,
+        "loss_rows": loss_rows,
     }
 
 
@@ -381,6 +407,7 @@ def write_summary_csv(path, rows):
         "mean_num_parameters",
         "mean_train_memory_delta_mb",
         "mean_peak_gpu_memory_mb",
+        "mean_final_train_loss",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -414,6 +441,7 @@ def write_fold_csv(path, rows):
         "num_parameters",
         "train_memory_delta_mb",
         "peak_gpu_memory_mb",
+        "final_train_loss",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -430,6 +458,53 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.ylabel("Mean Accuracy")
     plt.title(f"CNN Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(path, dpi=200)
+    plt.close()
+
+
+def write_loss_csv(path, rows):
+    fieldnames = [
+        "parameter_name",
+        "parameter_value",
+        "temporal_filters",
+        "depth_multiplier",
+        "kernel_length",
+        "dropout_rate",
+        "learning_rate",
+        "batch_size",
+        "epochs",
+        "weight_decay",
+        "fold",
+        "subject",
+        "epoch",
+        "train_loss",
+    ]
+
+    with open(path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def plot_train_loss(path, parameter_name, loss_rows):
+    plt.figure(figsize=(8, 5))
+
+    for value in dict.fromkeys(row["parameter_value"] for row in loss_rows):
+        value_rows = [row for row in loss_rows if row["parameter_value"] == value]
+        epoch_values = sorted(set(row["epoch"] for row in value_rows))
+        mean_epoch_losses = []
+        for epoch in epoch_values:
+            epoch_rows = [row["train_loss"] for row in value_rows if row["epoch"] == epoch and row["train_loss"] is not None]
+            mean_epoch_losses.append(float(np.mean(epoch_rows)) if epoch_rows else np.nan)
+        plt.plot(epoch_values, mean_epoch_losses, marker="o", linewidth=2, label=str(value))
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Mean Train Loss")
+    plt.title(f"CNN Train Loss: {parameter_name}")
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.legend(title=parameter_name)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
     plt.close()
@@ -478,6 +553,7 @@ def make_safe_filename(value):
 def run_parameter_study(parameter_name, values, base_config):
     summary_rows = []
     fold_rows = []
+    loss_rows = []
     plot_labels = []
     plot_scores = []
     parameter_dir = os.path.join(RESULTS_DIR, parameter_name)
@@ -538,6 +614,7 @@ def run_parameter_study(parameter_name, values, base_config):
             "mean_num_parameters": result["mean_num_parameters"],
             "mean_train_memory_delta_mb": result["mean_train_memory_delta_mb"],
             "mean_peak_gpu_memory_mb": result["mean_peak_gpu_memory_mb"],
+            "mean_final_train_loss": result["mean_final_train_loss"],
         }
         summary_rows.append(summary_row)
 
@@ -555,6 +632,22 @@ def run_parameter_study(parameter_name, values, base_config):
                     "epochs": result["epochs"],
                     "weight_decay": result["weight_decay"],
                     **fold_row,
+                }
+            )
+        for loss_row in result["loss_rows"]:
+            loss_rows.append(
+                {
+                    "parameter_name": parameter_name,
+                    "parameter_value": value,
+                    "temporal_filters": result["temporal_filters"],
+                    "depth_multiplier": result["depth_multiplier"],
+                    "kernel_length": result["kernel_length"],
+                    "dropout_rate": result["dropout_rate"],
+                    "learning_rate": result["learning_rate"],
+                    "batch_size": result["batch_size"],
+                    "epochs": result["epochs"],
+                    "weight_decay": result["weight_decay"],
+                    **loss_row,
                 }
             )
 
@@ -584,17 +677,23 @@ def run_parameter_study(parameter_name, values, base_config):
 
     summary_csv_path = os.path.join(parameter_dir, f"summary_{parameter_name}.csv")
     fold_csv_path = os.path.join(parameter_dir, f"fold_results_{parameter_name}.csv")
+    loss_csv_path = os.path.join(parameter_dir, f"train_loss_{parameter_name}.csv")
     plot_path = os.path.join(parameter_dir, f"plot_{parameter_name}.png")
+    loss_plot_path = os.path.join(parameter_dir, f"train_loss_{parameter_name}.png")
 
     write_summary_csv(summary_csv_path, summary_rows)
     write_fold_csv(fold_csv_path, fold_rows)
+    write_loss_csv(loss_csv_path, loss_rows)
     plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    plot_train_loss(loss_plot_path, parameter_name, loss_rows)
 
     best_row = max(summary_rows, key=lambda row: row["mean_accuracy"])
     print("\nBest result for", parameter_name)
     print(best_row)
     print("Saved summary to:", summary_csv_path)
     print("Saved fold results to:", fold_csv_path)
+    print("Saved train loss to:", loss_csv_path)
+    print("Saved train loss plot to:", loss_plot_path)
     print("Saved plot to:", plot_path)
 
 

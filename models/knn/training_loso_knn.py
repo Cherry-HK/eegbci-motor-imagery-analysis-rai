@@ -4,9 +4,11 @@ import os
 import matplotlib
 import numpy as np
 from mne.decoding import CSP
-from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -14,9 +16,8 @@ import matplotlib.pyplot as plt
 # ==========================================================
 # 1. LOAD PREPROCESSED DATA
 # ==========================================================
-BASE_DIR = "models/final"
-DATA_DIR = os.path.join(BASE_DIR, "preprocessing_result")
-RESULTS_DIR = os.path.join(BASE_DIR, "lda_parameter_study")
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "knn", "knn_parameter_study")
 
 X = np.load(os.path.join(DATA_DIR, "X.npy"))
 y = np.load(os.path.join(DATA_DIR, "y.npy"))
@@ -29,13 +30,15 @@ print("Number of subjects:", len(np.unique(subjects)))
 print("Results directory:", RESULTS_DIR)
 
 
-def run_loso_lda(
+def run_loso_knn(
     X,
     y,
     subjects,
     *,
-    solver="lsqr",
-    shrinkage="auto",
+    n_neighbors=5,
+    weights="distance",
+    metric="minkowski",
+    p=2,
     csp_components=6,
     progress_label="",
 ):
@@ -72,19 +75,29 @@ def run_loso_lda(
         X_train_csp = csp.fit_transform(X_train, y_train)
         X_test_csp = csp.transform(X_test)
 
-        model = LinearDiscriminantAnalysis(
-            solver=solver,
-            shrinkage=shrinkage,
+        model = Pipeline(
+            [
+                ("scaler", StandardScaler()),
+                (
+                    "knn",
+                    KNeighborsClassifier(
+                        n_neighbors=n_neighbors,
+                        weights=weights,
+                        metric=metric,
+                        p=p,
+                    ),
+                ),
+            ]
         )
 
         model.fit(X_train_csp, y_train)
 
         y_pred = model.predict(X_test_csp)
-        y_score = model.decision_function(X_test_csp)
+        y_prob = model.predict_proba(X_test_csp)[:, 1]
 
         acc = accuracy_score(y_test, y_pred)
         f1 = f1_score(y_test, y_pred, zero_division=0)
-        auc = roc_auc_score(y_test, y_score)
+        auc = roc_auc_score(y_test, y_prob)
         cm = confusion_matrix(y_test, y_pred, labels=[0, 1])
 
         accuracies.append(acc)
@@ -104,8 +117,10 @@ def run_loso_lda(
         )
 
     return {
-        "solver": solver,
-        "shrinkage": shrinkage,
+        "n_neighbors": n_neighbors,
+        "weights": weights,
+        "metric": metric,
+        "p": p,
         "csp_components": csp_components,
         "mean_accuracy": float(np.mean(accuracies)),
         "std_accuracy": float(np.std(accuracies)),
@@ -121,8 +136,10 @@ def write_summary_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "solver",
-        "shrinkage",
+        "n_neighbors",
+        "weights",
+        "metric",
+        "p",
         "csp_components",
         "mean_accuracy",
         "std_accuracy",
@@ -141,8 +158,10 @@ def write_fold_csv(path, rows):
     fieldnames = [
         "parameter_name",
         "parameter_value",
-        "solver",
-        "shrinkage",
+        "n_neighbors",
+        "weights",
+        "metric",
+        "p",
         "csp_components",
         "fold",
         "subject",
@@ -163,7 +182,7 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.plot(parameter_values, metric_values, marker="o", linewidth=2)
     plt.xlabel(parameter_name)
     plt.ylabel("Mean Accuracy")
-    plt.title(f"LDA Parameter Study: {parameter_name}")
+    plt.title(f"KNN Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -228,10 +247,14 @@ def run_parameter_study(parameter_name, values, base_config):
     for value_index, value in enumerate(values, 1):
         config = base_config.copy()
 
-        if parameter_name == "solver":
-            config["solver"] = value
-        elif parameter_name == "shrinkage":
-            config["shrinkage"] = value
+        if parameter_name == "n_neighbors":
+            config["n_neighbors"] = value
+        elif parameter_name == "weights":
+            config["weights"] = value
+        elif parameter_name == "metric":
+            config["metric"] = value
+        elif parameter_name == "p":
+            config["p"] = value
         elif parameter_name == "csp_components":
             config["csp_components"] = value
         else:
@@ -239,13 +262,15 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_lda(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_knn(X, y, subjects, progress_label=progress_label, **config)
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "solver": result["solver"],
-            "shrinkage": result["shrinkage"],
+            "n_neighbors": result["n_neighbors"],
+            "weights": result["weights"],
+            "metric": result["metric"],
+            "p": result["p"],
             "csp_components": result["csp_components"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
@@ -259,8 +284,10 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "solver": result["solver"],
-                    "shrinkage": result["shrinkage"],
+                    "n_neighbors": result["n_neighbors"],
+                    "weights": result["weights"],
+                    "metric": result["metric"],
+                    "p": result["p"],
                     "csp_components": result["csp_components"],
                     **fold_row,
                 }
@@ -307,26 +334,33 @@ def run_parameter_study(parameter_name, values, base_config):
 # 2. PARAMETER STUDY CONFIGURATION
 # ==========================================================
 BASE_CONFIG = {
-    "solver": "lsqr",
-    "shrinkage": "auto",
+    "n_neighbors": 5,
+    "weights": "distance",
+    "metric": "minkowski",
+    "p": 2,
     "csp_components": 6,
 }
 
 PARAMETER_STUDIES = [
     {
-        "name": "solver",
-        "values": ["svd", "lsqr", "eigen"],
-        "overrides": {"shrinkage": None},
+        "name": "n_neighbors",
+        "values": [1, 3, 5, 7, 9, 11],
+        "overrides": {"weights": "distance", "metric": "minkowski", "p": 2},
     },
     {
-        "name": "shrinkage",
-        "values": [None, "auto", 0.1, 0.5, 0.9],
-        "overrides": {"solver": "lsqr"},
+        "name": "weights",
+        "values": ["uniform", "distance"],
+        "overrides": {"n_neighbors": 5, "metric": "minkowski", "p": 2},
     },
     {
-        "name": "csp_components",
-        "values": [4, 6, 8, 10],
-        "overrides": {"solver": "lsqr", "shrinkage": "auto"},
+        "name": "metric",
+        "values": ["euclidean", "manhattan", "minkowski"],
+        "overrides": {"n_neighbors": 5, "weights": "distance"},
+    },
+    {
+        "name": "p",
+        "values": [1, 2, 3],
+        "overrides": {"n_neighbors": 5, "weights": "distance", "metric": "minkowski"},
     },
 ]
 

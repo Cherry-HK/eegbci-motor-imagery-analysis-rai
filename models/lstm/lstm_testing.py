@@ -1,0 +1,188 @@
+import os
+
+import numpy as np
+
+from models.deep_learning_utils import (
+    DEVICE,
+    build_search_space,
+    plot_subject_accuracy,
+    plot_subject_metrics,
+    plot_top_combinations,
+    plot_train_loss_curves,
+    run_loso_deep,
+    save_confusion_matrix_csv,
+    save_confusion_matrix_plot,
+    set_seed,
+    write_csv,
+    write_summary_text,
+)
+from models.deep_model_architectures import EEGLSTM
+
+
+DATA_DIR = os.path.join("models", "preprocessing_result")
+RESULTS_DIR = os.path.join("models", "lstm", "lstm_testing")
+
+X = np.load(os.path.join(DATA_DIR, "X.npy")).astype(np.float32)
+y = np.load(os.path.join(DATA_DIR, "y.npy")).astype(np.int64)
+subjects = np.load(os.path.join(DATA_DIR, "subjects.npy"))
+
+os.makedirs(RESULTS_DIR, exist_ok=True)
+
+print("Dataset shape:", X.shape)
+print("Number of subjects:", len(np.unique(subjects)))
+print("Results directory:", RESULTS_DIR)
+print("Device:", DEVICE)
+
+
+def build_model(config, n_channels, n_samples):
+    return EEGLSTM(
+        n_channels=n_channels,
+        hidden_size=config["hidden_size"],
+        num_layers=config["num_layers"],
+        dropout_rate=config["dropout_rate"],
+        bidirectional=config["bidirectional"],
+    )
+
+
+SEARCH_CONFIG = {
+    "hidden_size": [32, 64, 128],
+    "num_layers": [1, 2],
+    "dropout_rate": [0.3],
+    "bidirectional": [False, True],
+    "learning_rate": [1e-4, 1e-3],
+    "batch_size": [32],
+    "epochs": [20],
+    "weight_decay": [0.0],
+}
+
+
+if __name__ == "__main__":
+    set_seed(42)
+    combinations = build_search_space(SEARCH_CONFIG)
+    print("Total combinations:", len(combinations))
+
+    summary_rows = []
+    fold_rows = []
+    loss_rows = []
+    best_result = None
+
+    for combo_index, config in enumerate(combinations, 1):
+        progress_label = f"combo {combo_index}/{len(combinations)}"
+        result = run_loso_deep(
+            X,
+            y,
+            subjects,
+            config=config,
+            build_model=build_model,
+            add_channel_dim=True,
+            progress_label=progress_label,
+        )
+
+        row = {
+            "rank": 0,
+            "hidden_size": config["hidden_size"],
+            "num_layers": config["num_layers"],
+            "dropout_rate": config["dropout_rate"],
+            "bidirectional": config["bidirectional"],
+            "learning_rate": config["learning_rate"],
+            "batch_size": config["batch_size"],
+            "epochs": config["epochs"],
+            "weight_decay": config["weight_decay"],
+            "mean_accuracy": result["mean_accuracy"],
+            "std_accuracy": result["std_accuracy"],
+            "mean_f1": result["mean_f1"],
+            "mean_auc": result["mean_auc"],
+            "mean_train_time_sec": result["mean_train_time_sec"],
+            "mean_inference_time_sec": result["mean_inference_time_sec"],
+            "mean_inference_ms_per_sample": result["mean_inference_ms_per_sample"],
+            "mean_model_size_mb": result["mean_model_size_mb"],
+            "mean_num_parameters": result["mean_num_parameters"],
+            "mean_train_memory_delta_mb": result["mean_train_memory_delta_mb"],
+            "mean_peak_gpu_memory_mb": result["mean_peak_gpu_memory_mb"],
+            "mean_final_train_loss": result["mean_final_train_loss"],
+        }
+        summary_rows.append(row)
+
+        for fold_row in result["fold_rows"]:
+            fold_with_config = dict(fold_row)
+            fold_with_config.update(config)
+            fold_rows.append(fold_with_config)
+
+        loss_rows.extend(result["loss_rows"])
+
+        if best_result is None or result["mean_accuracy"] > best_result["mean_accuracy"]:
+            best_result = dict(result)
+            best_result.update(config)
+
+    summary_rows.sort(key=lambda row: (row["mean_accuracy"], row["mean_f1"], row["mean_auc"]), reverse=True)
+    for rank, row in enumerate(summary_rows, 1):
+        row["rank"] = rank
+
+    top_10_rows = summary_rows[:10]
+
+    write_csv(
+        os.path.join(RESULTS_DIR, "all_combinations_summary.csv"),
+        summary_rows,
+        list(summary_rows[0].keys()),
+    )
+    write_csv(
+        os.path.join(RESULTS_DIR, "all_combinations_fold_results.csv"),
+        fold_rows,
+        list(fold_rows[0].keys()),
+    )
+    write_csv(
+        os.path.join(RESULTS_DIR, "all_combinations_train_loss.csv"),
+        loss_rows,
+        list(loss_rows[0].keys()),
+    )
+    write_csv(
+        os.path.join(RESULTS_DIR, "top_10_combinations.csv"),
+        top_10_rows,
+        list(top_10_rows[0].keys()),
+    )
+    write_csv(
+        os.path.join(RESULTS_DIR, "best_configuration_per_subject.csv"),
+        best_result["per_subject_rows"],
+        list(best_result["per_subject_rows"][0].keys()),
+    )
+
+    save_confusion_matrix_csv(
+        os.path.join(RESULTS_DIR, "best_confusion_matrix.csv"),
+        best_result["overall_confusion_matrix"],
+    )
+    save_confusion_matrix_plot(
+        os.path.join(RESULTS_DIR, "best_confusion_matrix.png"),
+        best_result["overall_confusion_matrix"],
+        "LSTM Best Configuration Confusion Matrix",
+    )
+    plot_top_combinations(
+        os.path.join(RESULTS_DIR, "top_10_combinations.png"),
+        summary_rows,
+        top_n=10,
+        model_label="LSTM",
+        label_key="hidden_size",
+    )
+    plot_subject_accuracy(
+        os.path.join(RESULTS_DIR, "best_per_subject_accuracy.png"),
+        best_result["per_subject_rows"],
+        model_label="LSTM",
+    )
+    plot_subject_metrics(
+        os.path.join(RESULTS_DIR, "best_per_subject_metrics.png"),
+        best_result["per_subject_rows"],
+        model_label="LSTM",
+    )
+    write_summary_text(
+        os.path.join(RESULTS_DIR, "best_configuration_summary.txt"),
+        "LSTM",
+        best_result,
+        len(combinations),
+    )
+    plot_train_loss_curves(
+        os.path.join(RESULTS_DIR, "all_combinations_train_loss.png"),
+        loss_rows,
+        model_label="LSTM",
+        group_key="hidden_size",
+    )
+
+    print("Saved LSTM testing outputs to:", RESULTS_DIR)
