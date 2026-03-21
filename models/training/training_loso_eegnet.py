@@ -8,7 +8,7 @@ import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
-from braindecode.models import EEGNetv4
+from braindecode.models import EEGNet
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from torch.utils.data import DataLoader, TensorDataset
@@ -65,7 +65,7 @@ def create_dataloader(features, labels, batch_size, shuffle):
 
 
 def build_model(config, n_channels, n_samples):
-    return EEGNetv4(
+    return EEGNet(
         n_chans=n_channels,
         n_outputs=2,
         n_times=n_samples,
