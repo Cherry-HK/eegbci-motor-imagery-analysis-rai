@@ -46,8 +46,5 @@ data/
 *.pth
 
 # Visualization outputs
-*.png
-*.jpg
-*.pdf
 figures/
 results/
