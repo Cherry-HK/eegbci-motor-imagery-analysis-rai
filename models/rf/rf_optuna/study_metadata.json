@@ -1,0 +1,16 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 25,
+  "best_value": 0.6112781532021581,
+  "best_params": {
+    "max_depth": 10,
+    "n_estimators": 400,
+    "criterion": "log_loss",
+    "min_samples_split": 30,
+    "min_samples_leaf": 10,
+    "max_features": "sqrt",
+    "class_weight": "balanced_subsample",
+    "csp_components": 6
+  }
+}
