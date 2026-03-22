@@ -46,18 +46,18 @@ python src/download_dataset.py
 python src/preprocessing.py
 ```
 3. Run the parameter study
-   Example:
 ```bash
+# for example:
 python models/lr/training_loso_lr.py
 ```
 4. Run the best-combination search using optuna
-   Example:
 ```bash
+# for example:
 python models/lr/lr_optuna.py
 ```
 5. Export the final model
-   Example:
 ```bash
+# for example:
 python models/lr/lr_optuna_export.py
 ```
 
