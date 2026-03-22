@@ -1,0 +1,21 @@
+KNN OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+n_neighbors: 13
+weights: distance
+metric: euclidean
+p: unused
+csp_components: 6
+
+Best model final metrics
+mean_accuracy: 0.5814
+std_accuracy: 0.1035
+mean_f1: 0.5254
+mean_auc: 0.6166
+
+Top ranked trials
+rank 1: n_neighbors=13, weights=distance, metric=euclidean, p=unused, csp_components=6, mean_accuracy=0.5814, mean_f1=0.5254, mean_auc=0.6166
+rank 2: n_neighbors=13, weights=distance, metric=euclidean, p=unused, csp_components=6, mean_accuracy=0.5814, mean_f1=0.5254, mean_auc=0.6166
+rank 3: n_neighbors=13, weights=distance, metric=euclidean, p=unused, csp_components=6, mean_accuracy=0.5814, mean_f1=0.5254, mean_auc=0.6166

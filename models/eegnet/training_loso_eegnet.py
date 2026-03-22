@@ -8,10 +8,11 @@ import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
-from braindecode.models import EEGNet
+from braindecode.models import EEGNetv4
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from torch.utils.data import DataLoader, TensorDataset
+from models.deep_learning_utils import run_loso_deep
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -64,7 +65,7 @@ def create_dataloader(features, labels, batch_size, shuffle):
 
 
 def build_model(config, n_channels, n_samples):
-    return EEGNet(
+    return EEGNetv4(
         n_chans=n_channels,
         n_outputs=2,
         n_times=n_samples,
@@ -100,7 +101,9 @@ def train_one_fold(X_train, y_train, X_test, y_test, config):
         torch.cuda.synchronize()
 
     train_start = time.perf_counter()
-    for _ in range(config["epochs"]):
+    epoch_losses = []
+    for epoch in range(1, config["epochs"] + 1):
+        batch_losses = []
         for batch_x, batch_y in train_loader:
             batch_x = batch_x.to(DEVICE)
             batch_y = batch_y.to(DEVICE)
@@ -110,6 +113,13 @@ def train_one_fold(X_train, y_train, X_test, y_test, config):
             loss = criterion(logits, batch_y)
             loss.backward()
             optimizer.step()
+            batch_losses.append(float(loss.item()))
+        epoch_losses.append(
+            {
+                "epoch": epoch,
+                "train_loss": float(np.mean(batch_losses)) if batch_losses else None,
+            }
+        )
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
@@ -169,6 +179,8 @@ def train_one_fold(X_train, y_train, X_test, y_test, config):
         "num_parameters": num_parameters,
         "train_memory_delta_mb": train_memory_delta_mb,
         "peak_gpu_memory_mb": peak_gpu_memory_mb,
+        "epoch_losses": epoch_losses,
+        "final_train_loss": epoch_losses[-1]["train_loss"] if epoch_losses else None,
     }
 
 
@@ -205,6 +217,8 @@ def run_loso_eegnet(
     parameter_counts = []
     train_memory_deltas = []
     peak_gpu_memories = []
+    final_train_losses = []
+    loss_rows = []
 
     total_folds = len(np.unique(subjects))
 
@@ -252,6 +266,8 @@ def run_loso_eegnet(
             train_memory_deltas.append(result["train_memory_delta_mb"])
         if result["peak_gpu_memory_mb"] is not None:
             peak_gpu_memories.append(result["peak_gpu_memory_mb"])
+        if result["final_train_loss"] is not None:
+            final_train_losses.append(result["final_train_loss"])
 
         fold_rows.append(
             {
@@ -267,8 +283,18 @@ def run_loso_eegnet(
                 "num_parameters": result["num_parameters"],
                 "train_memory_delta_mb": result["train_memory_delta_mb"],
                 "peak_gpu_memory_mb": result["peak_gpu_memory_mb"],
+                "final_train_loss": result["final_train_loss"],
             }
         )
+        for epoch_row in result["epoch_losses"]:
+            loss_rows.append(
+                {
+                    "fold": fold,
+                    "subject": test_subject,
+                    "epoch": epoch_row["epoch"],
+                    "train_loss": epoch_row["train_loss"],
+                }
+            )
 
     return {
         "F1": f1,
@@ -293,7 +319,9 @@ def run_loso_eegnet(
         "mean_num_parameters": float(np.mean(parameter_counts)),
         "mean_train_memory_delta_mb": float(np.mean(train_memory_deltas)) if train_memory_deltas else None,
         "mean_peak_gpu_memory_mb": float(np.mean(peak_gpu_memories)) if peak_gpu_memories else None,
+        "mean_final_train_loss": float(np.mean(final_train_losses)) if final_train_losses else None,
         "fold_rows": fold_rows,
+        "loss_rows": loss_rows,
     }
 
 
@@ -310,6 +338,12 @@ def write_summary_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "mean_accuracy",
         "std_accuracy",
         "mean_f1",
@@ -321,6 +355,10 @@ def write_summary_csv(path, rows):
         "mean_num_parameters",
         "mean_train_memory_delta_mb",
         "mean_peak_gpu_memory_mb",
+        "mean_final_train_loss",
+        "mean_best_val_loss",
+        "mean_best_epoch",
+        "mean_stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -343,6 +381,12 @@ def write_fold_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "fold",
         "subject",
         "accuracy",
@@ -355,6 +399,11 @@ def write_fold_csv(path, rows):
         "num_parameters",
         "train_memory_delta_mb",
         "peak_gpu_memory_mb",
+        "final_train_loss",
+        "best_train_loss",
+        "best_val_loss",
+        "best_epoch",
+        "stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -371,6 +420,62 @@ def plot_parameter_results(path, parameter_name, parameter_values, metric_values
     plt.ylabel("Mean Accuracy")
     plt.title(f"EEGNet Parameter Study: {parameter_name}")
     plt.grid(True, linestyle="--", alpha=0.4)
+    plt.tight_layout()
+    plt.savefig(path, dpi=200)
+    plt.close()
+
+
+def write_loss_csv(path, rows):
+    fieldnames = [
+        "parameter_name",
+        "parameter_value",
+        "F1",
+        "D",
+        "F2",
+        "kernel_length",
+        "dropout_rate",
+        "learning_rate",
+        "batch_size",
+        "epochs",
+        "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
+        "fold",
+        "subject",
+        "epoch",
+        "train_loss",
+        "val_loss",
+        "learning_rate",
+    ]
+
+    with open(path, "w", newline="", encoding="utf-8") as csvfile:
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow(row)
+
+
+def plot_train_loss(path, parameter_name, loss_rows):
+    plt.figure(figsize=(8, 5))
+
+    for value in dict.fromkeys(row["parameter_value"] for row in loss_rows):
+        value_rows = [row for row in loss_rows if row["parameter_value"] == value]
+        epoch_values = sorted(set(row["epoch"] for row in value_rows))
+        mean_epoch_losses = []
+        for epoch in epoch_values:
+            epoch_rows = [row["train_loss"] for row in value_rows if row["epoch"] == epoch and row["train_loss"] is not None]
+            mean_epoch_losses.append(float(np.mean(epoch_rows)) if epoch_rows else np.nan)
+        plt.plot(epoch_values, mean_epoch_losses, marker="o", linewidth=2, label=str(value))
+
+    plt.xlabel("Epoch")
+    plt.ylabel("Mean Train Loss")
+    plt.title(f"EEGNet Train Loss: {parameter_name}")
+    plt.grid(True, linestyle="--", alpha=0.4)
+    plt.legend(title=parameter_name)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
     plt.close()
@@ -419,6 +524,7 @@ def make_safe_filename(value):
 def run_parameter_study(parameter_name, values, base_config):
     summary_rows = []
     fold_rows = []
+    loss_rows = []
     plot_labels = []
     plot_scores = []
     parameter_dir = os.path.join(RESULTS_DIR, parameter_name)
@@ -457,20 +563,34 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_eegnet(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_deep(
+            X,
+            y,
+            subjects,
+            config=config,
+            build_model=build_model,
+            add_channel_dim=False,
+            progress_label=progress_label,
+        )
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "F1": result["F1"],
-            "D": result["D"],
-            "F2": result["F2"],
-            "kernel_length": result["kernel_length"],
-            "dropout_rate": result["dropout_rate"],
-            "learning_rate": result["learning_rate"],
-            "batch_size": result["batch_size"],
-            "epochs": result["epochs"],
-            "weight_decay": result["weight_decay"],
+            "F1": config["f1"],
+            "D": config["depth_multiplier"],
+            "F2": config["f2"],
+            "kernel_length": config["kernel_length"],
+            "dropout_rate": config["dropout_rate"],
+            "learning_rate": config["learning_rate"],
+            "batch_size": config["batch_size"],
+            "epochs": config["epochs"],
+            "weight_decay": config["weight_decay"],
+            "validation_fraction": config["validation_fraction"],
+            "early_stopping_patience": config["early_stopping_patience"],
+            "lr_scheduler_patience": config["lr_scheduler_patience"],
+            "lr_scheduler_factor": config["lr_scheduler_factor"],
+            "use_class_weight": config["use_class_weight"],
+            "seed": config["seed"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
             "mean_f1": result["mean_f1"],
@@ -482,6 +602,10 @@ def run_parameter_study(parameter_name, values, base_config):
             "mean_num_parameters": result["mean_num_parameters"],
             "mean_train_memory_delta_mb": result["mean_train_memory_delta_mb"],
             "mean_peak_gpu_memory_mb": result["mean_peak_gpu_memory_mb"],
+            "mean_final_train_loss": result["mean_final_train_loss"],
+            "mean_best_val_loss": result["mean_best_val_loss"],
+            "mean_best_epoch": result["mean_best_epoch"],
+            "mean_stopped_epoch": result["mean_stopped_epoch"],
         }
         summary_rows.append(summary_row)
 
@@ -490,16 +614,45 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "F1": result["F1"],
-                    "D": result["D"],
-                    "F2": result["F2"],
-                    "kernel_length": result["kernel_length"],
-                    "dropout_rate": result["dropout_rate"],
-                    "learning_rate": result["learning_rate"],
-                    "batch_size": result["batch_size"],
-                    "epochs": result["epochs"],
-                    "weight_decay": result["weight_decay"],
+                    "F1": config["f1"],
+                    "D": config["depth_multiplier"],
+                    "F2": config["f2"],
+                    "kernel_length": config["kernel_length"],
+                    "dropout_rate": config["dropout_rate"],
+                    "learning_rate": config["learning_rate"],
+                    "batch_size": config["batch_size"],
+                    "epochs": config["epochs"],
+                    "weight_decay": config["weight_decay"],
+                    "validation_fraction": config["validation_fraction"],
+                    "early_stopping_patience": config["early_stopping_patience"],
+                    "lr_scheduler_patience": config["lr_scheduler_patience"],
+                    "lr_scheduler_factor": config["lr_scheduler_factor"],
+                    "use_class_weight": config["use_class_weight"],
+                    "seed": config["seed"],
                     **fold_row,
+                }
+            )
+        for loss_row in result["loss_rows"]:
+            loss_rows.append(
+                {
+                    "parameter_name": parameter_name,
+                    "parameter_value": value,
+                    "F1": config["f1"],
+                    "D": config["depth_multiplier"],
+                    "F2": config["f2"],
+                    "kernel_length": config["kernel_length"],
+                    "dropout_rate": config["dropout_rate"],
+                    "learning_rate": config["learning_rate"],
+                    "batch_size": config["batch_size"],
+                    "epochs": config["epochs"],
+                    "weight_decay": config["weight_decay"],
+                    "validation_fraction": config["validation_fraction"],
+                    "early_stopping_patience": config["early_stopping_patience"],
+                    "lr_scheduler_patience": config["lr_scheduler_patience"],
+                    "lr_scheduler_factor": config["lr_scheduler_factor"],
+                    "use_class_weight": config["use_class_weight"],
+                    "seed": config["seed"],
+                    **loss_row,
                 }
             )
 
@@ -529,17 +682,23 @@ def run_parameter_study(parameter_name, values, base_config):
 
     summary_csv_path = os.path.join(parameter_dir, f"summary_{parameter_name}.csv")
     fold_csv_path = os.path.join(parameter_dir, f"fold_results_{parameter_name}.csv")
+    loss_csv_path = os.path.join(parameter_dir, f"train_loss_{parameter_name}.csv")
     plot_path = os.path.join(parameter_dir, f"plot_{parameter_name}.png")
+    loss_plot_path = os.path.join(parameter_dir, f"train_loss_{parameter_name}.png")
 
     write_summary_csv(summary_csv_path, summary_rows)
     write_fold_csv(fold_csv_path, fold_rows)
+    write_loss_csv(loss_csv_path, loss_rows)
     plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    plot_train_loss(loss_plot_path, parameter_name, loss_rows)
 
     best_row = max(summary_rows, key=lambda row: row["mean_accuracy"])
     print("\nBest result for", parameter_name)
     print(best_row)
     print("Saved summary to:", summary_csv_path)
     print("Saved fold results to:", fold_csv_path)
+    print("Saved train loss to:", loss_csv_path)
+    print("Saved train loss plot to:", loss_plot_path)
     print("Saved plot to:", plot_path)
 
 
@@ -554,8 +713,14 @@ BASE_CONFIG = {
     "dropout_rate": 0.25,
     "learning_rate": 1e-3,
     "batch_size": 32,
-    "epochs": 20,
+    "epochs": 50,
     "weight_decay": 0.0,
+    "validation_fraction": 0.1,
+    "early_stopping_patience": 10,
+    "lr_scheduler_patience": 5,
+    "lr_scheduler_factor": 0.5,
+    "use_class_weight": True,
+    "seed": 42,
 }
 
 PARAMETER_STUDIES = [

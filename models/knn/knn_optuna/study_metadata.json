@@ -1,0 +1,12 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 16,
+  "best_value": 0.5813954410812978,
+  "best_params": {
+    "metric": "euclidean",
+    "n_neighbors": 13,
+    "weights": "distance",
+    "csp_components": 6
+  }
+}

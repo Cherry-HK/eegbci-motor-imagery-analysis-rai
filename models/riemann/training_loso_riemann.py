@@ -5,24 +5,10 @@ import matplotlib
 import numpy as np
 from pyriemann.estimation import Covariances
 from pyriemann.tangentspace import TangentSpace
-from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from sklearn.pipeline import Pipeline
-
-
-class CovRegularizer(BaseEstimator, TransformerMixin):
-    """Add small regularization to covariance matrices to ensure positive definiteness."""
-    def __init__(self, reg=1e-7):
-        self.reg = reg
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        n = X.shape[-1]
-        return X + self.reg * np.eye(n)
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -82,7 +68,6 @@ def run_loso_riemann(
         model = Pipeline(
             [
                 ("cov", Covariances(estimator=cov_estimator)),
-                ("reg", CovRegularizer(reg=1e-7)),
                 ("ts", TangentSpace(metric=ts_metric)),
                 (
                     "lr",
@@ -239,6 +224,7 @@ def make_safe_filename(value):
 def run_parameter_study(parameter_name, values, base_config):
     summary_rows = []
     fold_rows = []
+    skipped_rows = []
     plot_labels = []
     plot_scores = []
     parameter_dir = os.path.join(RESULTS_DIR, parameter_name)
@@ -269,7 +255,23 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_riemann(X, y, subjects, progress_label=progress_label, **config)
+        try:
+            result = run_loso_riemann(X, y, subjects, progress_label=progress_label, **config)
+        except ValueError as exc:
+            skipped_rows.append(
+                {
+                    "parameter_name": parameter_name,
+                    "parameter_value": value,
+                    "cov_estimator": config["cov_estimator"],
+                    "ts_metric": config["ts_metric"],
+                    "C": config["c_value"],
+                    "solver": config["solver"],
+                    "class_weight": config["class_weight"],
+                    "error": str(exc),
+                }
+            )
+            print(f"Skipping {progress_label} because the configuration is invalid: {exc}")
+            continue
 
         summary_row = {
             "parameter_name": parameter_name,
@@ -323,17 +325,43 @@ def run_parameter_study(parameter_name, values, base_config):
 
     summary_csv_path = os.path.join(parameter_dir, f"summary_{parameter_name}.csv")
     fold_csv_path = os.path.join(parameter_dir, f"fold_results_{parameter_name}.csv")
+    skipped_csv_path = os.path.join(parameter_dir, f"skipped_{parameter_name}.csv")
     plot_path = os.path.join(parameter_dir, f"plot_{parameter_name}.png")
 
     write_summary_csv(summary_csv_path, summary_rows)
     write_fold_csv(fold_csv_path, fold_rows)
-    plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    if skipped_rows:
+        with open(skipped_csv_path, "w", newline="", encoding="utf-8") as csvfile:
+            writer = csv.DictWriter(
+                csvfile,
+                fieldnames=[
+                    "parameter_name",
+                    "parameter_value",
+                    "cov_estimator",
+                    "ts_metric",
+                    "C",
+                    "solver",
+                    "class_weight",
+                    "error",
+                ],
+            )
+            writer.writeheader()
+            for row in skipped_rows:
+                writer.writerow(row)
+
+    if summary_rows:
+        plot_parameter_results(plot_path, parameter_name, plot_labels, plot_scores)
+    else:
+        print("No valid results were produced for this parameter study.")
+        return
 
     best_row = max(summary_rows, key=lambda row: row["mean_accuracy"])
     print("\nBest result for", parameter_name)
     print(best_row)
     print("Saved summary to:", summary_csv_path)
     print("Saved fold results to:", fold_csv_path)
+    if skipped_rows:
+        print("Saved skipped configurations to:", skipped_csv_path)
     print("Saved plot to:", plot_path)
 
 
@@ -351,7 +379,7 @@ BASE_CONFIG = {
 PARAMETER_STUDIES = [
     {
         "name": "cov_estimator",
-        "values": ["scm", "lwf", "oas"],
+        "values": ["lwf", "oas"],
         "overrides": {},
     },
     {
