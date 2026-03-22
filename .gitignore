@@ -36,9 +36,6 @@ Thumbs.db
 # Dataset (PhysioNet EEGMMIDB)
 data/
 
-# Generated numpy files (preprocessed data)
-*.npy
-
 # Trained models and results
 *.pkl
 *.h5
