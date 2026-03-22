@@ -40,9 +40,14 @@ Thumbs.db
 *.pt
 *.pth
 
-# Data
-data/
-models/preprocessing_result/
+# Data (keep folders, ignore contents except .gitkeep)
+data/**
+!data/
+!data/raw/
+!data/raw/.gitkeep
+models/preprocessing_result/**
+!models/preprocessing_result/
+!models/preprocessing_result/.gitkeep
 
 # Visualization outputs
 figures/
