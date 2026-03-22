@@ -64,10 +64,18 @@ python models/lr/lr_optuna_export.py
 ### Models
 | Model | Type | Features |
 |-------|------|----------|
-| Logistic Regression | Classical ML | CSP |
-| KNN | Classical ML | CSP + Raw |
-| EEGNet-Motor CNN | Deep Learning | Raw EEG |
-| CNN-LSTM with Attention | Deep Learning | Raw EEG |
+| SVM | Classical ML | CSP features |
+| Logistic Regression (LR) | Classical ML | CSP features |
+| KNN | Classical ML | CSP features |
+| LDA | Classical ML | CSP features |
+| Decision Tree (DT) | Classical ML | CSP features |
+| Random Forest (RF) | Classical ML | CSP features |
+| Riemannian Classifier | Classical ML | Riemannian covariance / tangent-space features |
+| CNN | Deep Learning | Raw EEG epochs |
+| EEGNet | Deep Learning | Raw EEG epochs |
+| LSTM | Deep Learning | Raw EEG epochs |
+| Transformer | Deep Learning | Raw EEG epochs |
+| ShallowConvNet | Deep Learning | Raw EEG epochs |
 
 ### Requirements
 ```
