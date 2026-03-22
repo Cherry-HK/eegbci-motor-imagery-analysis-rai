@@ -37,19 +37,28 @@ data/
 ```
 
 ### Usage
-
+1. Download dataset (all 109 subjects)
 ```bash
-# 1. Download dataset (all 109 subjects)
 python src/download_dataset.py
-
-# 2. Preprocess: bandpass filter, epoch, CSP features
+```
+2. Preprocess the data: bandpass filter, epoch, CSP features
+```bash
 python src/preprocessing.py
-
-# 3. Train models
-python src/train_logistic_regression.py
-python src/train_knn.py
-python src/train_cnn.py
-python src/train_lstm.py
+```
+3. Run the parameter study
+   Example:
+```bash
+python models/lr/training_loso_lr.py
+```
+4. Run the best-combination search using optuna
+   Example:
+```bash
+python models/lr/lr_optuna.py
+```
+5. Export the final model
+   Example:
+```bash
+python models/lr/lr_optuna_export.py
 ```
 
 ### Models
