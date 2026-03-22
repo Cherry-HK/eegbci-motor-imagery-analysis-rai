@@ -33,8 +33,6 @@ MNE-Python-*.sh
 .DS_Store
 Thumbs.db
 
-# Dataset (PhysioNet EEGMMIDB)
-data/
 
 # Trained models and results
 *.pkl
