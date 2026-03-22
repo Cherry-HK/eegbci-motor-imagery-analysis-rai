@@ -26,17 +26,14 @@ https://physionet.org/content/eegmmidb/1.0.0/
 
 ```
 data/
-└── MNE-eegbci-data/
-    └── files/
-        └── eegmmidb/
-            └── 1.0.0/
-                ├── S001/
-                │   ├── S001R04.edf
-                │   ├── S001R08.edf
-                │   └── S001R12.edf
-                ├── S002/
-                ├── ...
-                └── S109/
+└── raw/
+    ├── S001/
+    │   ├── S001R04.edf
+    │   ├── S001R08.edf
+    │   └── S001R12.edf
+    ├── S002/
+    ├── ...
+    └── S109/
 ```
 
 ### Usage
