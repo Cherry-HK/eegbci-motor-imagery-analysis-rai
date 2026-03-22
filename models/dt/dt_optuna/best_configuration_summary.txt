@@ -1,0 +1,22 @@
+DT OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+criterion: entropy
+max_depth: 7
+min_samples_split: 6
+min_samples_leaf: 4
+class_weight: balanced
+csp_components: 6
+
+Best model final metrics
+mean_accuracy: 0.5683
+std_accuracy: 0.0955
+mean_f1: 0.4330
+mean_auc: 0.5932
+
+Top ranked trials
+rank 1: criterion=entropy, max_depth=7, min_samples_split=6, min_samples_leaf=4, class_weight=balanced, csp_components=6, mean_accuracy=0.5683, mean_f1=0.4330, mean_auc=0.5932
+rank 2: criterion=entropy, max_depth=7, min_samples_split=4, min_samples_leaf=4, class_weight=balanced, csp_components=6, mean_accuracy=0.5683, mean_f1=0.4330, mean_auc=0.5932
+rank 3: criterion=entropy, max_depth=7, min_samples_split=4, min_samples_leaf=4, class_weight=balanced, csp_components=6, mean_accuracy=0.5683, mean_f1=0.4330, mean_auc=0.5932
