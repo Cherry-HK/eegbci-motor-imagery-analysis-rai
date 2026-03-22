@@ -1,2 +1,0 @@
-rank,trial_number,cov_estimator,ts_metric,C,solver,class_weight,mean_accuracy,std_accuracy,mean_f1,mean_auc
-1,0,oas,riemann,0.36579328632390673,saga,balanced,0.6288637355727559,0.12054162629245409,0.5906751374875819,0.7116594628887808
