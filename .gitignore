@@ -35,19 +35,19 @@ Thumbs.db
 
 
 # Trained models and results
+*.npy
 *.pkl
 *.h5
 *.pt
 *.pth
 
 # Data (keep folders, ignore contents except .gitkeep)
-data/**
-!data/
-!data/raw/
+data/raw/**
 !data/raw/.gitkeep
+
 models/preprocessing_result/**
-!models/preprocessing_result/
 !models/preprocessing_result/.gitkeep
+
 
 # Visualization outputs
 figures/
