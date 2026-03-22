@@ -40,6 +40,9 @@ Thumbs.db
 *.pt
 *.pth
 
+# Data
+data/
+
 # Visualization outputs
 figures/
 results/
