@@ -10,7 +10,7 @@
 This project uses the **EEG Motor Movement/Imagery Dataset (EEGMMIDB)** provided by **PhysioNet**.
 - **109 subjects**, 64-channel EEG
 - **Motor imagery runs**: R04, R08, R12 (left fist vs right fist)
-- **9 selected motor-cortex channels**: FC3, FCz, FC4, C3, Cz, C4, CP3, CPz, CP4
+- **15 selected motor-cortex channels**: FC3, FC1, FCz, FC2, FC4, C3, C1, Cz, C2, C4, CP3, CP1, CPz, CP2, CP4
 
 **Dataset source:**
 https://physionet.org/content/eegmmidb/1.0.0/
