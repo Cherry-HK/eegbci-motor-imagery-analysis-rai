@@ -3,6 +3,7 @@ import io
 import os
 import random
 import time
+from copy import deepcopy
 
 import matplotlib
 import numpy as np
@@ -125,6 +126,49 @@ def create_dataloader(features, labels, batch_size, shuffle):
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 
+def split_train_validation(X_data, y_data, validation_fraction, seed):
+    if validation_fraction <= 0.0 or len(np.unique(y_data)) < 2:
+        return X_data, y_data, None, None
+
+    rng = np.random.default_rng(seed)
+    train_indices = []
+    val_indices = []
+
+    for class_label in np.unique(y_data):
+        class_indices = np.where(y_data == class_label)[0]
+        shuffled = rng.permutation(class_indices)
+        n_val = int(round(len(shuffled) * validation_fraction))
+        n_val = max(1, n_val) if len(shuffled) > 1 else 0
+        n_val = min(n_val, max(0, len(shuffled) - 1))
+        val_indices.extend(shuffled[:n_val].tolist())
+        train_indices.extend(shuffled[n_val:].tolist())
+
+    if not val_indices or not train_indices:
+        return X_data, y_data, None, None
+
+    train_indices = np.array(train_indices, dtype=np.int64)
+    val_indices = np.array(val_indices, dtype=np.int64)
+    return X_data[train_indices], y_data[train_indices], X_data[val_indices], y_data[val_indices]
+
+
+def compute_fold_normalization(X_train_reference):
+    mean = X_train_reference.mean(axis=(0, 2), keepdims=True)
+    std = X_train_reference.std(axis=(0, 2), keepdims=True) + 1e-8
+    return mean.astype(np.float32), std.astype(np.float32)
+
+
+def apply_fold_normalization(X_data, mean, std):
+    return ((X_data - mean) / std).astype(np.float32)
+
+
+def build_class_weight_tensor(y_train):
+    class_counts = np.bincount(y_train.astype(np.int64), minlength=2).astype(np.float32)
+    class_counts[class_counts == 0] = 1.0
+    total = float(class_counts.sum())
+    weights = total / (len(class_counts) * class_counts)
+    return torch.tensor(weights, dtype=torch.float32, device=DEVICE)
+
+
 def train_one_fold(
     X_train,
     y_train,
@@ -132,8 +176,23 @@ def train_one_fold(
     y_test,
     config,
 ):
-    n_channels = X_train.shape[1]
-    n_samples = X_train.shape[2]
+    X_subtrain, y_subtrain, X_val, y_val = split_train_validation(
+        X_train,
+        y_train,
+        config.get("validation_fraction", 0.1),
+        config.get("seed", 42),
+    )
+    if X_val is None:
+        X_subtrain, y_subtrain = X_train, y_train
+
+    normalization_mean, normalization_std = compute_fold_normalization(X_subtrain)
+    X_subtrain = apply_fold_normalization(X_subtrain, normalization_mean, normalization_std)
+    X_test = apply_fold_normalization(X_test, normalization_mean, normalization_std)
+    if X_val is not None:
+        X_val = apply_fold_normalization(X_val, normalization_mean, normalization_std)
+
+    n_channels = X_subtrain.shape[1]
+    n_samples = X_subtrain.shape[2]
 
     model = EEGNetLite(
         n_channels=n_channels,
@@ -144,14 +203,26 @@ def train_one_fold(
         dropout_rate=config["dropout_rate"],
     ).to(DEVICE)
 
-    criterion = nn.CrossEntropyLoss()
+    class_weight_tensor = None
+    if config.get("use_class_weight", True):
+        class_weight_tensor = build_class_weight_tensor(y_subtrain)
+    criterion = nn.CrossEntropyLoss(weight=class_weight_tensor)
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["learning_rate"],
         weight_decay=config["weight_decay"],
     )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=config.get("lr_scheduler_factor", 0.5),
+        patience=config.get("lr_scheduler_patience", 5),
+    )
 
-    train_loader = create_dataloader(X_train, y_train, config["batch_size"], shuffle=True)
+    train_loader = create_dataloader(X_subtrain, y_subtrain, config["batch_size"], shuffle=True)
+    val_loader = None
+    if X_val is not None:
+        val_loader = create_dataloader(X_val, y_val, config["batch_size"], shuffle=False)
     test_loader = create_dataloader(X_test, y_test, config["batch_size"], shuffle=False)
 
     model.train()
@@ -162,6 +233,13 @@ def train_one_fold(
 
     train_start = time.perf_counter()
     epoch_losses = []
+
+    best_state_dict = None
+    best_val_loss = float("inf")
+    best_epoch = 0
+    best_train_loss = None
+    epochs_without_improvement = 0
+    stopped_epoch = config["epochs"]
 
     for epoch in range(1, config["epochs"] + 1):
         batch_losses = []
@@ -175,17 +253,48 @@ def train_one_fold(
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+        train_loss = float(np.mean(batch_losses)) if batch_losses else None
+        model.eval()
+        val_loss = train_loss
+        if val_loader is not None:
+            val_batch_losses = []
+            with torch.no_grad():
+                for batch_x, batch_y in val_loader:
+                    batch_x = batch_x.to(DEVICE)
+                    batch_y = batch_y.to(DEVICE)
+                    logits = model(batch_x)
+                    loss = criterion(logits, batch_y)
+                    val_batch_losses.append(float(loss.item()))
+            val_loss = float(np.mean(val_batch_losses)) if val_batch_losses else train_loss
+        model.train()
+        scheduler.step(val_loss)
         epoch_losses.append(
             {
                 "epoch": epoch,
-                "train_loss": float(np.mean(batch_losses)) if batch_losses else None,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
+        if val_loss is not None and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            best_train_loss = train_loss
+            best_state_dict = deepcopy(model.state_dict())
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= config.get("early_stopping_patience", 10):
+                stopped_epoch = epoch
+                break
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     train_time_sec = time.perf_counter() - train_start
     memory_after_mb = get_process_memory_mb()
+
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
 
     model.eval()
     all_probs = []
@@ -243,6 +352,10 @@ def train_one_fold(
         "peak_gpu_memory_mb": peak_gpu_memory_mb,
         "epoch_losses": epoch_losses,
         "final_train_loss": epoch_losses[-1]["train_loss"] if epoch_losses else None,
+        "best_train_loss": best_train_loss,
+        "best_val_loss": best_val_loss if best_val_loss != float("inf") else None,
+        "best_epoch": best_epoch,
+        "stopped_epoch": stopped_epoch,
     }
 
 
@@ -259,6 +372,12 @@ def run_loso_cnn(
     batch_size=32,
     epochs=20,
     weight_decay=0.0,
+    validation_fraction=0.1,
+    early_stopping_patience=10,
+    lr_scheduler_patience=5,
+    lr_scheduler_factor=0.5,
+    use_class_weight=True,
+    seed=42,
     progress_label="",
 ):
     """Run LOSO with a PyTorch CNN and return summary metrics."""
@@ -279,6 +398,9 @@ def run_loso_cnn(
     train_memory_deltas = []
     peak_gpu_memories = []
     final_train_losses = []
+    best_val_losses = []
+    best_epochs = []
+    stopped_epochs = []
     loss_rows = []
 
     total_folds = len(np.unique(subjects))
@@ -307,6 +429,12 @@ def run_loso_cnn(
                 "batch_size": batch_size,
                 "epochs": epochs,
                 "weight_decay": weight_decay,
+                "validation_fraction": validation_fraction,
+                "early_stopping_patience": early_stopping_patience,
+                "lr_scheduler_patience": lr_scheduler_patience,
+                "lr_scheduler_factor": lr_scheduler_factor,
+                "use_class_weight": use_class_weight,
+                "seed": seed,
             },
         )
 
@@ -328,6 +456,12 @@ def run_loso_cnn(
             peak_gpu_memories.append(result["peak_gpu_memory_mb"])
         if result["final_train_loss"] is not None:
             final_train_losses.append(result["final_train_loss"])
+        if result["best_val_loss"] is not None:
+            best_val_losses.append(result["best_val_loss"])
+        if result["best_epoch"] is not None:
+            best_epochs.append(result["best_epoch"])
+        if result["stopped_epoch"] is not None:
+            stopped_epochs.append(result["stopped_epoch"])
 
         fold_rows.append(
             {
@@ -344,6 +478,10 @@ def run_loso_cnn(
                 "train_memory_delta_mb": result["train_memory_delta_mb"],
                 "peak_gpu_memory_mb": result["peak_gpu_memory_mb"],
                 "final_train_loss": result["final_train_loss"],
+                "best_train_loss": result["best_train_loss"],
+                "best_val_loss": result["best_val_loss"],
+                "best_epoch": result["best_epoch"],
+                "stopped_epoch": result["stopped_epoch"],
             }
         )
         for epoch_row in result["epoch_losses"]:
@@ -353,6 +491,8 @@ def run_loso_cnn(
                     "subject": test_subject,
                     "epoch": epoch_row["epoch"],
                     "train_loss": epoch_row["train_loss"],
+                    "val_loss": epoch_row.get("val_loss"),
+                    "learning_rate": epoch_row.get("learning_rate"),
                 }
             )
 
@@ -365,6 +505,12 @@ def run_loso_cnn(
         "batch_size": batch_size,
         "epochs": epochs,
         "weight_decay": weight_decay,
+        "validation_fraction": validation_fraction,
+        "early_stopping_patience": early_stopping_patience,
+        "lr_scheduler_patience": lr_scheduler_patience,
+        "lr_scheduler_factor": lr_scheduler_factor,
+        "use_class_weight": use_class_weight,
+        "seed": seed,
         "mean_accuracy": float(np.mean(accuracies)),
         "std_accuracy": float(np.std(accuracies)),
         "mean_f1": float(np.mean(f1_scores)),
@@ -379,6 +525,9 @@ def run_loso_cnn(
         "mean_train_memory_delta_mb": float(np.mean(train_memory_deltas)) if train_memory_deltas else None,
         "mean_peak_gpu_memory_mb": float(np.mean(peak_gpu_memories)) if peak_gpu_memories else None,
         "mean_final_train_loss": float(np.mean(final_train_losses)) if final_train_losses else None,
+        "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
+        "mean_best_epoch": float(np.mean(best_epochs)) if best_epochs else None,
+        "mean_stopped_epoch": float(np.mean(stopped_epochs)) if stopped_epochs else None,
         "fold_rows": fold_rows,
         "loss_rows": loss_rows,
     }
@@ -396,6 +545,12 @@ def write_summary_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "mean_accuracy",
         "std_accuracy",
         "mean_f1",
@@ -408,6 +563,9 @@ def write_summary_csv(path, rows):
         "mean_train_memory_delta_mb",
         "mean_peak_gpu_memory_mb",
         "mean_final_train_loss",
+        "mean_best_val_loss",
+        "mean_best_epoch",
+        "mean_stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -429,6 +587,12 @@ def write_fold_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "fold",
         "subject",
         "accuracy",
@@ -442,6 +606,10 @@ def write_fold_csv(path, rows):
         "train_memory_delta_mb",
         "peak_gpu_memory_mb",
         "final_train_loss",
+        "best_train_loss",
+        "best_val_loss",
+        "best_epoch",
+        "stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -475,10 +643,18 @@ def write_loss_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "fold",
         "subject",
         "epoch",
         "train_loss",
+        "val_loss",
+        "learning_rate",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -603,6 +779,12 @@ def run_parameter_study(parameter_name, values, base_config):
             "batch_size": result["batch_size"],
             "epochs": result["epochs"],
             "weight_decay": result["weight_decay"],
+            "validation_fraction": result["validation_fraction"],
+            "early_stopping_patience": result["early_stopping_patience"],
+            "lr_scheduler_patience": result["lr_scheduler_patience"],
+            "lr_scheduler_factor": result["lr_scheduler_factor"],
+            "use_class_weight": result["use_class_weight"],
+            "seed": result["seed"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
             "mean_f1": result["mean_f1"],
@@ -631,6 +813,12 @@ def run_parameter_study(parameter_name, values, base_config):
                     "batch_size": result["batch_size"],
                     "epochs": result["epochs"],
                     "weight_decay": result["weight_decay"],
+                    "validation_fraction": result["validation_fraction"],
+                    "early_stopping_patience": result["early_stopping_patience"],
+                    "lr_scheduler_patience": result["lr_scheduler_patience"],
+                    "lr_scheduler_factor": result["lr_scheduler_factor"],
+                    "use_class_weight": result["use_class_weight"],
+                    "seed": result["seed"],
                     **fold_row,
                 }
             )
@@ -647,6 +835,12 @@ def run_parameter_study(parameter_name, values, base_config):
                     "batch_size": result["batch_size"],
                     "epochs": result["epochs"],
                     "weight_decay": result["weight_decay"],
+                    "validation_fraction": result["validation_fraction"],
+                    "early_stopping_patience": result["early_stopping_patience"],
+                    "lr_scheduler_patience": result["lr_scheduler_patience"],
+                    "lr_scheduler_factor": result["lr_scheduler_factor"],
+                    "use_class_weight": result["use_class_weight"],
+                    "seed": result["seed"],
                     **loss_row,
                 }
             )
@@ -707,8 +901,14 @@ BASE_CONFIG = {
     "dropout_rate": 0.5,
     "learning_rate": 1e-3,
     "batch_size": 32,
-    "epochs": 20,
+    "epochs": 50,
     "weight_decay": 0.0,
+    "validation_fraction": 0.1,
+    "early_stopping_patience": 10,
+    "lr_scheduler_patience": 5,
+    "lr_scheduler_factor": 0.5,
+    "use_class_weight": True,
+    "seed": 42,
 }
 
 PARAMETER_STUDIES = [

@@ -51,8 +51,14 @@ SEARCH_CONFIG = {
     "bidirectional": [False, True],
     "learning_rate": [1e-4, 1e-3],
     "batch_size": [32],
-    "epochs": [20],
+    "epochs": [75],
     "weight_decay": [0.0],
+    "validation_fraction": [0.1],
+    "early_stopping_patience": [10],
+    "lr_scheduler_patience": [5],
+    "lr_scheduler_factor": [0.5],
+    "use_class_weight": [True],
+    "seed": [42],
 }
 
 
@@ -88,6 +94,12 @@ if __name__ == "__main__":
             "batch_size": config["batch_size"],
             "epochs": config["epochs"],
             "weight_decay": config["weight_decay"],
+            "validation_fraction": config["validation_fraction"],
+            "early_stopping_patience": config["early_stopping_patience"],
+            "lr_scheduler_patience": config["lr_scheduler_patience"],
+            "lr_scheduler_factor": config["lr_scheduler_factor"],
+            "use_class_weight": config["use_class_weight"],
+            "seed": config["seed"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
             "mean_f1": result["mean_f1"],
@@ -100,6 +112,9 @@ if __name__ == "__main__":
             "mean_train_memory_delta_mb": result["mean_train_memory_delta_mb"],
             "mean_peak_gpu_memory_mb": result["mean_peak_gpu_memory_mb"],
             "mean_final_train_loss": result["mean_final_train_loss"],
+            "mean_best_val_loss": result["mean_best_val_loss"],
+            "mean_best_epoch": result["mean_best_epoch"],
+            "mean_stopped_epoch": result["mean_stopped_epoch"],
         }
         summary_rows.append(row)
 

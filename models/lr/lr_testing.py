@@ -306,7 +306,7 @@ def plot_subject_metric_comparison(path, per_subject_rows):
 def write_best_summary(path, best_result, total_combinations, top_rows):
     best_subject = best_result["best_subject"]
     worst_subject = best_result["worst_subject"]
-    top_three = top_rows[:3]
+    top_ranked_rows = top_rows[:3]
 
     lines = [
         "LR FINAL TUNING SUMMARY",
@@ -342,7 +342,7 @@ def write_best_summary(path, best_result, total_combinations, top_rows):
         "Top ranked combinations",
     ]
 
-    for row in top_three:
+    for row in top_ranked_rows:
         lines.append(
             (
                 f"rank {row['rank']}: penalty={row['penalty']}, C={row['C']}, "

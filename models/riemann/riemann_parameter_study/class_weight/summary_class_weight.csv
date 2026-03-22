@@ -1,0 +1,3 @@
+parameter_name,parameter_value,cov_estimator,ts_metric,C,solver,class_weight,mean_accuracy,std_accuracy,mean_f1,mean_auc
+class_weight,,lwf,riemann,1.0,lbfgs,,0.6279824528923776,0.11953228063025127,0.5864419757984712,0.710164256993403
+class_weight,balanced,lwf,riemann,1.0,lbfgs,balanced,0.627818010076126,0.11946102466389671,0.5893955164234603,0.7102503441278496

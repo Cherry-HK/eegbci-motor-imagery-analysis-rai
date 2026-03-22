@@ -1,0 +1,17 @@
+CSP TESTING SUMMARY
+======================================================================
+
+Best overall model/CSP combination
+model: SVM
+csp_components: 6
+mean_accuracy: 0.6262
+mean_f1: 0.5736
+mean_auc: 0.7259
+
+Best CSP component count per model
+SVM: csp=6, accuracy=0.6262, f1=0.5736, auc=0.7259
+LR: csp=6, accuracy=0.6224, f1=0.5795, auc=0.7246
+KNN: csp=8, accuracy=0.5705, f1=0.5308, auc=0.6061
+DT: csp=6, accuracy=0.5624, f1=0.4035, auc=0.5851
+RF: csp=10, accuracy=0.6050, f1=0.5314, auc=0.6735
+LDA: csp=6, accuracy=0.6190, f1=0.5713, auc=0.7239

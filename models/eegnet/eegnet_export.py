@@ -49,12 +49,21 @@ def load_best_configuration(path):
         "batch_size": parse_numeric(best_row["batch_size"]),
         "epochs": parse_numeric(best_row["epochs"]),
         "weight_decay": parse_numeric(best_row["weight_decay"]),
+        "validation_fraction": parse_numeric(best_row["validation_fraction"]),
+        "early_stopping_patience": parse_numeric(best_row["early_stopping_patience"]),
+        "lr_scheduler_patience": parse_numeric(best_row["lr_scheduler_patience"]),
+        "lr_scheduler_factor": parse_numeric(best_row["lr_scheduler_factor"]),
+        "use_class_weight": parse_numeric(best_row["use_class_weight"]),
+        "seed": parse_numeric(best_row["seed"]),
         "rank": int(best_row["rank"]),
         "mean_accuracy": float(best_row["mean_accuracy"]),
         "std_accuracy": float(best_row["std_accuracy"]),
         "mean_f1": float(best_row["mean_f1"]),
         "mean_auc": float(best_row["mean_auc"]),
         "mean_final_train_loss": parse_numeric(best_row["mean_final_train_loss"]),
+        "mean_best_val_loss": parse_numeric(best_row["mean_best_val_loss"]),
+        "mean_best_epoch": parse_numeric(best_row["mean_best_epoch"]),
+        "mean_stopped_epoch": parse_numeric(best_row["mean_stopped_epoch"]),
     }
 
 
@@ -70,7 +79,7 @@ if __name__ == "__main__":
     print("Loaded best EEGNet configuration:", best_config)
     print("Device:", DEVICE)
 
-    model, epoch_losses = train_full_deep_model(
+    model, epoch_losses, normalization_stats = train_full_deep_model(
         X,
         y,
         config=best_config,
@@ -103,6 +112,12 @@ if __name__ == "__main__":
                 "batch_size",
                 "epochs",
                 "weight_decay",
+                "validation_fraction",
+                "early_stopping_patience",
+                "lr_scheduler_patience",
+                "lr_scheduler_factor",
+                "use_class_weight",
+                "seed",
             ]
         },
         "evaluation_summary": {
@@ -112,7 +127,11 @@ if __name__ == "__main__":
             "mean_f1": best_config["mean_f1"],
             "mean_auc": best_config["mean_auc"],
             "mean_final_train_loss": best_config["mean_final_train_loss"],
+            "mean_best_val_loss": best_config["mean_best_val_loss"],
+            "mean_best_epoch": best_config["mean_best_epoch"],
+            "mean_stopped_epoch": best_config["mean_stopped_epoch"],
         },
+        "normalization_stats": normalization_stats,
         "export_train_loss_history": epoch_losses,
     }
     save_metadata(METADATA_PATH, metadata)

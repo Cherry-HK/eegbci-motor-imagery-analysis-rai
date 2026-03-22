@@ -264,27 +264,32 @@ def plot_top_combinations(path, rows, top_n=10):
 
 
 def plot_subject_accuracy(path, per_subject_rows):
-    sorted_rows = sorted(per_subject_rows, key=lambda row: row["subject"])
-    labels = [str(row["subject"]) for row in sorted_rows]
+    sorted_rows = sorted(per_subject_rows, key=lambda row: row["accuracy"], reverse=True)
+    subject_ranks = np.arange(1, len(sorted_rows) + 1)
     scores = [row["accuracy"] for row in sorted_rows]
 
-    plt.figure(figsize=(10, 5))
-    bars = plt.bar(labels, scores, color="#10b981")
-    plt.xlabel("Test Subject")
+    plt.figure(figsize=(11, 5))
+    plt.scatter(subject_ranks, scores, color="#10b981", s=32, alpha=0.9)
+    plt.plot(subject_ranks, scores, color="#10b981", linewidth=1.2, alpha=0.45)
+    plt.xlabel("Subjects Ranked by Accuracy")
     plt.ylabel("Accuracy")
     plt.title("Best SVM Configuration: LOSO Accuracy per Subject")
     plt.ylim(0.0, 1.0)
+    plt.xlim(0, len(sorted_rows) + 1)
     plt.grid(axis="y", linestyle="--", alpha=0.4)
 
-    for bar, score in zip(bars, scores):
-        plt.text(
-            bar.get_x() + bar.get_width() / 2.0,
-            score + 0.01,
-            f"{score:.2f}",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-        )
+    highlight_rows = sorted_rows[:3] + sorted_rows[-3:]
+    highlight_subjects = {row["subject"] for row in highlight_rows}
+    for rank, row in enumerate(sorted_rows, start=1):
+        if row["subject"] in highlight_subjects:
+            plt.annotate(
+                f"S{row['subject']}: {row['accuracy']:.2f}",
+                (rank, row["accuracy"]),
+                textcoords="offset points",
+                xytext=(0, 8),
+                ha="center",
+                fontsize=8,
+            )
 
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -292,23 +297,29 @@ def plot_subject_accuracy(path, per_subject_rows):
 
 
 def plot_subject_metric_comparison(path, per_subject_rows):
-    sorted_rows = sorted(per_subject_rows, key=lambda row: row["subject"])
-    subjects_axis = np.arange(len(sorted_rows))
+    sorted_rows = sorted(per_subject_rows, key=lambda row: row["accuracy"], reverse=True)
+    subjects_axis = np.arange(1, len(sorted_rows) + 1)
     accuracy_values = [row["accuracy"] for row in sorted_rows]
     f1_values = [row["f1_score"] for row in sorted_rows]
     auc_values = [row["roc_auc"] for row in sorted_rows]
 
-    plt.figure(figsize=(11, 5))
-    plt.plot(subjects_axis, accuracy_values, marker="o", linewidth=2, label="Accuracy")
-    plt.plot(subjects_axis, f1_values, marker="s", linewidth=2, label="F1-score")
-    plt.plot(subjects_axis, auc_values, marker="^", linewidth=2, label="ROC-AUC")
-    plt.xticks(subjects_axis, [str(row["subject"]) for row in sorted_rows])
-    plt.ylim(0.0, 1.0)
-    plt.xlabel("Test Subject")
-    plt.ylabel("Score")
-    plt.title("Best SVM Configuration: Per-Subject LOSO Metrics")
-    plt.grid(True, linestyle="--", alpha=0.4)
-    plt.legend()
+    fig, axes = plt.subplots(3, 1, figsize=(11, 9), sharex=True)
+    metric_specs = [
+        ("Accuracy", accuracy_values, "#2563eb"),
+        ("F1-score", f1_values, "#f97316"),
+        ("ROC-AUC", auc_values, "#16a34a"),
+    ]
+
+    for ax, (label, values, color) in zip(axes, metric_specs):
+        ax.scatter(subjects_axis, values, color=color, s=24, alpha=0.85)
+        ax.plot(subjects_axis, values, color=color, linewidth=1.0, alpha=0.35)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_ylabel(label)
+        ax.grid(True, linestyle="--", alpha=0.35)
+
+    axes[0].set_title("Best SVM Configuration: Per-Subject LOSO Metrics")
+    axes[-1].set_xlabel("Subjects Ranked by Accuracy")
+    axes[-1].set_xlim(0, len(sorted_rows) + 1)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
     plt.close()

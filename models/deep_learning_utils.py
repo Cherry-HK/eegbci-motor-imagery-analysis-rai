@@ -4,6 +4,7 @@ import json
 import os
 import random
 import time
+from copy import deepcopy
 
 import matplotlib
 import numpy as np
@@ -49,6 +50,49 @@ def create_dataloader(features, labels, batch_size, shuffle, add_channel_dim):
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
 
 
+def split_train_validation(X, y, validation_fraction, seed):
+    if validation_fraction <= 0.0 or len(np.unique(y)) < 2:
+        return X, y, None, None
+
+    rng = np.random.default_rng(seed)
+    train_indices = []
+    val_indices = []
+
+    for class_label in np.unique(y):
+        class_indices = np.where(y == class_label)[0]
+        shuffled = rng.permutation(class_indices)
+        n_val = int(round(len(shuffled) * validation_fraction))
+        n_val = max(1, n_val) if len(shuffled) > 1 else 0
+        n_val = min(n_val, max(0, len(shuffled) - 1))
+        val_indices.extend(shuffled[:n_val].tolist())
+        train_indices.extend(shuffled[n_val:].tolist())
+
+    if not val_indices or not train_indices:
+        return X, y, None, None
+
+    train_indices = np.array(train_indices, dtype=np.int64)
+    val_indices = np.array(val_indices, dtype=np.int64)
+    return X[train_indices], y[train_indices], X[val_indices], y[val_indices]
+
+
+def compute_fold_normalization(X_train_reference):
+    mean = X_train_reference.mean(axis=(0, 2), keepdims=True)
+    std = X_train_reference.std(axis=(0, 2), keepdims=True) + 1e-8
+    return mean.astype(np.float32), std.astype(np.float32)
+
+
+def apply_fold_normalization(X_data, mean, std):
+    return ((X_data - mean) / std).astype(np.float32)
+
+
+def build_class_weight_tensor(y_train):
+    class_counts = np.bincount(y_train.astype(np.int64), minlength=2).astype(np.float32)
+    class_counts[class_counts == 0] = 1.0
+    total = float(class_counts.sum())
+    weights = total / (len(class_counts) * class_counts)
+    return torch.tensor(weights, dtype=torch.float32, device=DEVICE)
+
+
 def train_one_fold_deep(
     X_train,
     y_train,
@@ -58,23 +102,50 @@ def train_one_fold_deep(
     build_model,
     add_channel_dim,
 ):
-    n_channels = X_train.shape[1]
-    n_samples = X_train.shape[2]
+    X_subtrain, y_subtrain, X_val, y_val = split_train_validation(
+        X_train,
+        y_train,
+        config.get("validation_fraction", 0.1),
+        config.get("seed", 42),
+    )
+    if X_val is None:
+        X_subtrain, y_subtrain = X_train, y_train
+
+    normalization_mean, normalization_std = compute_fold_normalization(X_subtrain)
+    X_subtrain = apply_fold_normalization(X_subtrain, normalization_mean, normalization_std)
+    X_test = apply_fold_normalization(X_test, normalization_mean, normalization_std)
+    if X_val is not None:
+        X_val = apply_fold_normalization(X_val, normalization_mean, normalization_std)
+
+    n_channels = X_subtrain.shape[1]
+    n_samples = X_subtrain.shape[2]
 
     model = build_model(config, n_channels, n_samples).to(DEVICE)
-    criterion = nn.CrossEntropyLoss()
+    class_weight_tensor = None
+    if config.get("use_class_weight", True):
+        class_weight_tensor = build_class_weight_tensor(y_subtrain)
+    criterion = nn.CrossEntropyLoss(weight=class_weight_tensor)
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["learning_rate"],
         weight_decay=config["weight_decay"],
     )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=config.get("lr_scheduler_factor", 0.5),
+        patience=config.get("lr_scheduler_patience", 5),
+    )
 
     train_loader = create_dataloader(
-        X_train, y_train, config["batch_size"], shuffle=True, add_channel_dim=add_channel_dim
+        X_subtrain, y_subtrain, config["batch_size"], shuffle=True, add_channel_dim=add_channel_dim
     )
-    test_loader = create_dataloader(
-        X_test, y_test, config["batch_size"], shuffle=False, add_channel_dim=add_channel_dim
-    )
+    val_loader = None
+    if X_val is not None:
+        val_loader = create_dataloader(
+            X_val, y_val, config["batch_size"], shuffle=False, add_channel_dim=add_channel_dim
+        )
+    test_loader = create_dataloader(X_test, y_test, config["batch_size"], shuffle=False, add_channel_dim=add_channel_dim)
 
     model.train()
     memory_before_mb = get_process_memory_mb()
@@ -84,6 +155,13 @@ def train_one_fold_deep(
 
     train_start = time.perf_counter()
     epoch_losses = []
+    best_state_dict = None
+    best_val_loss = float("inf")
+    best_epoch = 0
+    best_train_loss = None
+    epochs_without_improvement = 0
+    stopped_epoch = config["epochs"]
+
     for epoch in range(1, config["epochs"] + 1):
         batch_losses = []
         for batch_x, batch_y in train_loader:
@@ -96,17 +174,51 @@ def train_one_fold_deep(
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+        train_loss = float(np.mean(batch_losses)) if batch_losses else None
+
+        model.eval()
+        val_loss = train_loss
+        if val_loader is not None:
+            val_batch_losses = []
+            with torch.no_grad():
+                for batch_x, batch_y in val_loader:
+                    batch_x = batch_x.to(DEVICE)
+                    batch_y = batch_y.to(DEVICE)
+                    logits = model(batch_x)
+                    loss = criterion(logits, batch_y)
+                    val_batch_losses.append(float(loss.item()))
+            val_loss = float(np.mean(val_batch_losses)) if val_batch_losses else train_loss
+        model.train()
+
+        scheduler.step(val_loss)
         epoch_losses.append(
             {
                 "epoch": epoch,
-                "train_loss": float(np.mean(batch_losses)) if batch_losses else None,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
+
+        if val_loss is not None and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            best_train_loss = train_loss
+            best_state_dict = deepcopy(model.state_dict())
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= config.get("early_stopping_patience", 10):
+                stopped_epoch = epoch
+                break
 
     if torch.cuda.is_available():
         torch.cuda.synchronize()
     train_time_sec = time.perf_counter() - train_start
     memory_after_mb = get_process_memory_mb()
+
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
 
     model.eval()
     all_probs = []
@@ -161,6 +273,10 @@ def train_one_fold_deep(
         "peak_gpu_memory_mb": peak_gpu_memory_mb,
         "epoch_losses": epoch_losses,
         "final_train_loss": epoch_losses[-1]["train_loss"] if epoch_losses else None,
+        "best_train_loss": best_train_loss,
+        "best_val_loss": best_val_loss if best_val_loss != float("inf") else None,
+        "best_epoch": best_epoch,
+        "stopped_epoch": stopped_epoch,
     }
 
 
@@ -191,6 +307,9 @@ def run_loso_deep(
     train_memory_deltas = []
     peak_gpu_memories = []
     final_train_losses = []
+    best_val_losses = []
+    best_epochs = []
+    stopped_epochs = []
 
     total_folds = len(np.unique(subjects))
 
@@ -229,6 +348,12 @@ def run_loso_deep(
             peak_gpu_memories.append(result["peak_gpu_memory_mb"])
         if result["final_train_loss"] is not None:
             final_train_losses.append(result["final_train_loss"])
+        if result["best_val_loss"] is not None:
+            best_val_losses.append(result["best_val_loss"])
+        if result["best_epoch"] is not None:
+            best_epochs.append(result["best_epoch"])
+        if result["stopped_epoch"] is not None:
+            stopped_epochs.append(result["stopped_epoch"])
 
         all_y_true.extend(y_test.tolist())
         all_y_pred.extend(result["y_pred"].tolist())
@@ -248,6 +373,10 @@ def run_loso_deep(
                 "train_memory_delta_mb": result["train_memory_delta_mb"],
                 "peak_gpu_memory_mb": result["peak_gpu_memory_mb"],
                 "final_train_loss": result["final_train_loss"],
+                "best_train_loss": result["best_train_loss"],
+                "best_val_loss": result["best_val_loss"],
+                "best_epoch": result["best_epoch"],
+                "stopped_epoch": result["stopped_epoch"],
             }
         )
         for epoch_entry in result["epoch_losses"]:
@@ -256,6 +385,8 @@ def run_loso_deep(
                 "subject": test_subject,
                 "epoch": epoch_entry["epoch"],
                 "train_loss": epoch_entry["train_loss"],
+                "val_loss": epoch_entry.get("val_loss"),
+                "learning_rate": epoch_entry.get("learning_rate"),
             }
             for key, value in config.items():
                 loss_row[key] = value
@@ -282,6 +413,9 @@ def run_loso_deep(
         "mean_train_memory_delta_mb": float(np.mean(train_memory_deltas)) if train_memory_deltas else None,
         "mean_peak_gpu_memory_mb": float(np.mean(peak_gpu_memories)) if peak_gpu_memories else None,
         "mean_final_train_loss": float(np.mean(final_train_losses)) if final_train_losses else None,
+        "mean_best_val_loss": float(np.mean(best_val_losses)) if best_val_losses else None,
+        "mean_best_epoch": float(np.mean(best_epochs)) if best_epochs else None,
+        "mean_stopped_epoch": float(np.mean(stopped_epochs)) if stopped_epochs else None,
     }
 
 
@@ -376,27 +510,30 @@ def plot_top_combinations(path, rows, top_n, model_label, label_key):
 
 
 def plot_subject_accuracy(path, per_subject_rows, model_label):
-    sorted_rows = sorted(per_subject_rows, key=lambda row: row["subject"])
-    labels = [str(row["subject"]) for row in sorted_rows]
+    sorted_rows = sorted(per_subject_rows, key=lambda row: row["accuracy"], reverse=True)
+    subject_ranks = np.arange(1, len(sorted_rows) + 1)
     scores = [row["accuracy"] for row in sorted_rows]
 
-    plt.figure(figsize=(10, 5))
-    bars = plt.bar(labels, scores, color="#0f766e")
+    plt.figure(figsize=(11, 5))
+    plt.scatter(subject_ranks, scores, color="#0f766e", s=32, alpha=0.9)
+    plt.plot(subject_ranks, scores, color="#0f766e", linewidth=1.2, alpha=0.45)
     plt.ylabel("Accuracy")
-    plt.xlabel("Held-out Subject")
+    plt.xlabel("Subjects Ranked by Accuracy")
     plt.title(f"{model_label} Best Configuration: Per-Subject LOSO Accuracy")
     plt.ylim(0.0, 1.0)
-    plt.xticks(rotation=45, ha="right")
+    plt.xlim(0, len(sorted_rows) + 1)
 
-    for bar, score in zip(bars, scores):
-        plt.text(
-            bar.get_x() + bar.get_width() / 2.0,
-            score + 0.01,
-            f"{score:.2f}",
-            ha="center",
-            va="bottom",
-            fontsize=8,
-        )
+    highlight_subjects = {row["subject"] for row in sorted_rows[:3] + sorted_rows[-3:]}
+    for rank, row in enumerate(sorted_rows, start=1):
+        if row["subject"] in highlight_subjects:
+            plt.annotate(
+                f"S{row['subject']}: {row['accuracy']:.2f}",
+                (rank, row["accuracy"]),
+                textcoords="offset points",
+                xytext=(0, 8),
+                ha="center",
+                fontsize=8,
+            )
 
     plt.tight_layout()
     plt.savefig(path, dpi=200)
@@ -404,22 +541,28 @@ def plot_subject_accuracy(path, per_subject_rows, model_label):
 
 
 def plot_subject_metrics(path, per_subject_rows, model_label):
-    sorted_rows = sorted(per_subject_rows, key=lambda row: row["subject"])
-    labels = [str(row["subject"]) for row in sorted_rows]
+    sorted_rows = sorted(per_subject_rows, key=lambda row: row["accuracy"], reverse=True)
+    subjects_axis = np.arange(1, len(sorted_rows) + 1)
     accuracies = [row["accuracy"] for row in sorted_rows]
     f1_scores = [row["f1_score"] for row in sorted_rows]
     auc_scores = [row["roc_auc"] for row in sorted_rows]
 
-    plt.figure(figsize=(11, 5))
-    plt.plot(labels, accuracies, marker="o", label="Accuracy")
-    plt.plot(labels, f1_scores, marker="s", label="F1-score")
-    plt.plot(labels, auc_scores, marker="^", label="ROC-AUC")
-    plt.ylabel("Score")
-    plt.xlabel("Held-out Subject")
-    plt.title(f"{model_label} Best Configuration: Per-Subject Metrics")
-    plt.ylim(0.0, 1.0)
-    plt.xticks(rotation=45, ha="right")
-    plt.legend()
+    fig, axes = plt.subplots(3, 1, figsize=(11, 9), sharex=True)
+    metric_specs = [
+        ("Accuracy", accuracies, "#2563eb"),
+        ("F1-score", f1_scores, "#f97316"),
+        ("ROC-AUC", auc_scores, "#16a34a"),
+    ]
+    for ax, (label, values, color) in zip(axes, metric_specs):
+        ax.scatter(subjects_axis, values, color=color, s=24, alpha=0.85)
+        ax.plot(subjects_axis, values, color=color, linewidth=1.0, alpha=0.35)
+        ax.set_ylim(0.0, 1.0)
+        ax.set_ylabel(label)
+        ax.grid(True, linestyle="--", alpha=0.35)
+
+    axes[0].set_title(f"{model_label} Best Configuration: Per-Subject Metrics")
+    axes[-1].set_xlabel("Subjects Ranked by Accuracy")
+    axes[-1].set_xlim(0, len(sorted_rows) + 1)
     plt.tight_layout()
     plt.savefig(path, dpi=200)
     plt.close()
@@ -521,22 +664,54 @@ def load_best_row(path, script_hint):
 
 
 def train_full_deep_model(X, y, config, build_model, add_channel_dim):
-    n_channels = X.shape[1]
-    n_samples = X.shape[2]
+    X_subtrain, y_subtrain, X_val, y_val = split_train_validation(
+        X,
+        y,
+        config.get("validation_fraction", 0.1),
+        config.get("seed", 42),
+    )
+    if X_val is None:
+        X_subtrain, y_subtrain = X, y
+
+    normalization_mean, normalization_std = compute_fold_normalization(X_subtrain)
+    X_subtrain = apply_fold_normalization(X_subtrain, normalization_mean, normalization_std)
+    if X_val is not None:
+        X_val = apply_fold_normalization(X_val, normalization_mean, normalization_std)
+
+    n_channels = X_subtrain.shape[1]
+    n_samples = X_subtrain.shape[2]
     model = build_model(config, n_channels, n_samples).to(DEVICE)
-    criterion = nn.CrossEntropyLoss()
+    class_weight_tensor = None
+    if config.get("use_class_weight", True):
+        class_weight_tensor = build_class_weight_tensor(y_subtrain)
+    criterion = nn.CrossEntropyLoss(weight=class_weight_tensor)
     optimizer = torch.optim.Adam(
         model.parameters(),
         lr=config["learning_rate"],
         weight_decay=config["weight_decay"],
     )
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",
+        factor=config.get("lr_scheduler_factor", 0.5),
+        patience=config.get("lr_scheduler_patience", 5),
+    )
 
     loader = create_dataloader(
-        X, y, config["batch_size"], shuffle=True, add_channel_dim=add_channel_dim
+        X_subtrain, y_subtrain, config["batch_size"], shuffle=True, add_channel_dim=add_channel_dim
     )
+    val_loader = None
+    if X_val is not None:
+        val_loader = create_dataloader(
+            X_val, y_val, config["batch_size"], shuffle=False, add_channel_dim=add_channel_dim
+        )
 
     model.train()
     epoch_losses = []
+    best_state_dict = None
+    best_val_loss = float("inf")
+    best_epoch = 0
+    epochs_without_improvement = 0
     for epoch in range(1, config["epochs"] + 1):
         batch_losses = []
         for batch_x, batch_y in loader:
@@ -548,13 +723,48 @@ def train_full_deep_model(X, y, config, build_model, add_channel_dim):
             loss.backward()
             optimizer.step()
             batch_losses.append(float(loss.item()))
+        train_loss = float(np.mean(batch_losses)) if batch_losses else None
+        model.eval()
+        val_loss = train_loss
+        if val_loader is not None:
+            val_batch_losses = []
+            with torch.no_grad():
+                for batch_x, batch_y in val_loader:
+                    batch_x = batch_x.to(DEVICE)
+                    batch_y = batch_y.to(DEVICE)
+                    logits = model(batch_x)
+                    loss = criterion(logits, batch_y)
+                    val_batch_losses.append(float(loss.item()))
+            val_loss = float(np.mean(val_batch_losses)) if val_batch_losses else train_loss
+        model.train()
+        scheduler.step(val_loss)
         epoch_losses.append(
             {
                 "epoch": epoch,
-                "train_loss": float(np.mean(batch_losses)) if batch_losses else None,
+                "train_loss": train_loss,
+                "val_loss": val_loss,
+                "learning_rate": float(optimizer.param_groups[0]["lr"]),
             }
         )
-    return model, epoch_losses
+        if val_loss is not None and val_loss < best_val_loss:
+            best_val_loss = val_loss
+            best_epoch = epoch
+            best_state_dict = deepcopy(model.state_dict())
+            epochs_without_improvement = 0
+        else:
+            epochs_without_improvement += 1
+            if epochs_without_improvement >= config.get("early_stopping_patience", 10):
+                break
+
+    if best_state_dict is not None:
+        model.load_state_dict(best_state_dict)
+    normalization_stats = {
+        "mean": normalization_mean.tolist(),
+        "std": normalization_std.tolist(),
+        "best_epoch": best_epoch,
+        "best_val_loss": None if best_val_loss == float("inf") else best_val_loss,
+    }
+    return model, epoch_losses, normalization_stats
 
 
 def save_metadata(path, metadata):

@@ -11,6 +11,7 @@ import torch.nn as nn
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from torch.utils.data import DataLoader, TensorDataset
+from models.deep_learning_utils import run_loso_deep
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -81,6 +82,16 @@ class EEGLSTM(nn.Module):
         last_step = output[:, -1, :]
         last_step = self.dropout(last_step)
         return self.classifier(last_step)
+
+
+def build_model(config, n_channels, n_samples):
+    return EEGLSTM(
+        n_channels=n_channels,
+        hidden_size=config["hidden_size"],
+        num_layers=config["num_layers"],
+        dropout_rate=config["dropout_rate"],
+        bidirectional=config["bidirectional"],
+    ).to(DEVICE)
 
 
 def get_process_memory_mb():
@@ -365,6 +376,12 @@ def write_summary_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "mean_accuracy",
         "std_accuracy",
         "mean_f1",
@@ -377,6 +394,9 @@ def write_summary_csv(path, rows):
         "mean_train_memory_delta_mb",
         "mean_peak_gpu_memory_mb",
         "mean_final_train_loss",
+        "mean_best_val_loss",
+        "mean_best_epoch",
+        "mean_stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -398,6 +418,12 @@ def write_fold_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "fold",
         "subject",
         "accuracy",
@@ -411,6 +437,10 @@ def write_fold_csv(path, rows):
         "train_memory_delta_mb",
         "peak_gpu_memory_mb",
         "final_train_loss",
+        "best_train_loss",
+        "best_val_loss",
+        "best_epoch",
+        "stopped_epoch",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -444,10 +474,18 @@ def write_loss_csv(path, rows):
         "batch_size",
         "epochs",
         "weight_decay",
+        "validation_fraction",
+        "early_stopping_patience",
+        "lr_scheduler_patience",
+        "lr_scheduler_factor",
+        "use_class_weight",
+        "seed",
         "fold",
         "subject",
         "epoch",
         "train_loss",
+        "val_loss",
+        "learning_rate",
     ]
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
@@ -559,19 +597,33 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_lstm(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_deep(
+            X,
+            y,
+            subjects,
+            config=config,
+            build_model=build_model,
+            add_channel_dim=True,
+            progress_label=progress_label,
+        )
 
         summary_row = {
             "parameter_name": parameter_name,
             "parameter_value": value,
-            "hidden_size": result["hidden_size"],
-            "num_layers": result["num_layers"],
-            "dropout_rate": result["dropout_rate"],
-            "bidirectional": result["bidirectional"],
-            "learning_rate": result["learning_rate"],
-            "batch_size": result["batch_size"],
-            "epochs": result["epochs"],
-            "weight_decay": result["weight_decay"],
+            "hidden_size": config["hidden_size"],
+            "num_layers": config["num_layers"],
+            "dropout_rate": config["dropout_rate"],
+            "bidirectional": config["bidirectional"],
+            "learning_rate": config["learning_rate"],
+            "batch_size": config["batch_size"],
+            "epochs": config["epochs"],
+            "weight_decay": config["weight_decay"],
+            "validation_fraction": config["validation_fraction"],
+            "early_stopping_patience": config["early_stopping_patience"],
+            "lr_scheduler_patience": config["lr_scheduler_patience"],
+            "lr_scheduler_factor": config["lr_scheduler_factor"],
+            "use_class_weight": config["use_class_weight"],
+            "seed": config["seed"],
             "mean_accuracy": result["mean_accuracy"],
             "std_accuracy": result["std_accuracy"],
             "mean_f1": result["mean_f1"],
@@ -584,6 +636,9 @@ def run_parameter_study(parameter_name, values, base_config):
             "mean_train_memory_delta_mb": result["mean_train_memory_delta_mb"],
             "mean_peak_gpu_memory_mb": result["mean_peak_gpu_memory_mb"],
             "mean_final_train_loss": result["mean_final_train_loss"],
+            "mean_best_val_loss": result["mean_best_val_loss"],
+            "mean_best_epoch": result["mean_best_epoch"],
+            "mean_stopped_epoch": result["mean_stopped_epoch"],
         }
         summary_rows.append(summary_row)
 
@@ -592,14 +647,20 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "hidden_size": result["hidden_size"],
-                    "num_layers": result["num_layers"],
-                    "dropout_rate": result["dropout_rate"],
-                    "bidirectional": result["bidirectional"],
-                    "learning_rate": result["learning_rate"],
-                    "batch_size": result["batch_size"],
-                    "epochs": result["epochs"],
-                    "weight_decay": result["weight_decay"],
+                    "hidden_size": config["hidden_size"],
+                    "num_layers": config["num_layers"],
+                    "dropout_rate": config["dropout_rate"],
+                    "bidirectional": config["bidirectional"],
+                    "learning_rate": config["learning_rate"],
+                    "batch_size": config["batch_size"],
+                    "epochs": config["epochs"],
+                    "weight_decay": config["weight_decay"],
+                    "validation_fraction": config["validation_fraction"],
+                    "early_stopping_patience": config["early_stopping_patience"],
+                    "lr_scheduler_patience": config["lr_scheduler_patience"],
+                    "lr_scheduler_factor": config["lr_scheduler_factor"],
+                    "use_class_weight": config["use_class_weight"],
+                    "seed": config["seed"],
                     **fold_row,
                 }
             )
@@ -608,14 +669,20 @@ def run_parameter_study(parameter_name, values, base_config):
                 {
                     "parameter_name": parameter_name,
                     "parameter_value": value,
-                    "hidden_size": result["hidden_size"],
-                    "num_layers": result["num_layers"],
-                    "dropout_rate": result["dropout_rate"],
-                    "bidirectional": result["bidirectional"],
-                    "learning_rate": result["learning_rate"],
-                    "batch_size": result["batch_size"],
-                    "epochs": result["epochs"],
-                    "weight_decay": result["weight_decay"],
+                    "hidden_size": config["hidden_size"],
+                    "num_layers": config["num_layers"],
+                    "dropout_rate": config["dropout_rate"],
+                    "bidirectional": config["bidirectional"],
+                    "learning_rate": config["learning_rate"],
+                    "batch_size": config["batch_size"],
+                    "epochs": config["epochs"],
+                    "weight_decay": config["weight_decay"],
+                    "validation_fraction": config["validation_fraction"],
+                    "early_stopping_patience": config["early_stopping_patience"],
+                    "lr_scheduler_patience": config["lr_scheduler_patience"],
+                    "lr_scheduler_factor": config["lr_scheduler_factor"],
+                    "use_class_weight": config["use_class_weight"],
+                    "seed": config["seed"],
                     **loss_row,
                 }
             )
@@ -676,8 +743,14 @@ BASE_CONFIG = {
     "bidirectional": False,
     "learning_rate": 1e-3,
     "batch_size": 32,
-    "epochs": 20,
+    "epochs": 75,
     "weight_decay": 0.0,
+    "validation_fraction": 0.1,
+    "early_stopping_patience": 10,
+    "lr_scheduler_patience": 5,
+    "lr_scheduler_factor": 0.5,
+    "use_class_weight": True,
+    "seed": 42,
 }
 
 PARAMETER_STUDIES = [

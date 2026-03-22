@@ -1,0 +1,23 @@
+SVM OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+kernel: linear
+C: 0.5327719500520753
+gamma: unused
+degree: unused
+coef0: unused
+class_weight: balanced
+csp_components: 6
+
+Best model final metrics
+mean_accuracy: 0.6271
+std_accuracy: 0.1340
+mean_f1: 0.5748
+mean_auc: 0.7258
+
+Top ranked trials
+rank 1: kernel=linear, C=0.5327719500520753, gamma=unused, degree=unused, coef0=unused, class_weight=balanced, csp_components=6, mean_accuracy=0.6271, mean_f1=0.5748, mean_auc=0.7258
+rank 2: kernel=linear, C=0.5961974806131725, gamma=unused, degree=unused, coef0=unused, class_weight=balanced, csp_components=6, mean_accuracy=0.6271, mean_f1=0.5748, mean_auc=0.7259
+rank 3: kernel=linear, C=0.3584251290416999, gamma=unused, degree=unused, coef0=unused, class_weight=balanced, csp_components=6, mean_accuracy=0.6269, mean_f1=0.5745, mean_auc=0.7257

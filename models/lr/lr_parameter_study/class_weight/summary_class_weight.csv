@@ -1,0 +1,3 @@
+parameter_name,parameter_value,penalty,C,solver,class_weight,l1_ratio,csp_components,mean_accuracy,std_accuracy,mean_f1,mean_auc
+class_weight,,l2,1.0,lbfgs,,,6,0.6208948350512471,0.1377783336029486,0.5705244661996821,0.7244006572303758
+class_weight,balanced,l2,1.0,lbfgs,balanced,,6,0.6224110399959515,0.1355277857374389,0.5795126948876859,0.7246379783101466

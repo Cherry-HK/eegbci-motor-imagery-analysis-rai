@@ -67,6 +67,63 @@ class EEGNetLite(nn.Module):
         return self.classifier(x)
 
 
+class EEGShallowConvNet(nn.Module):
+    def __init__(
+        self,
+        n_channels,
+        n_samples,
+        temporal_filters=40,
+        filter_length=25,
+        pool_length=75,
+        pool_stride=15,
+        dropout_rate=0.5,
+    ):
+        super().__init__()
+
+        filter_length = max(3, min(filter_length, n_samples))
+        temporal_output_samples = max(1, n_samples - filter_length + 1)
+        pool_length = max(2, min(pool_length, temporal_output_samples))
+        pool_stride = max(1, min(pool_stride, pool_length))
+
+        self.temporal_conv = nn.Conv2d(
+            1,
+            temporal_filters,
+            kernel_size=(1, filter_length),
+            bias=False,
+        )
+        self.spatial_conv = nn.Conv2d(
+            temporal_filters,
+            temporal_filters,
+            kernel_size=(n_channels, 1),
+            bias=False,
+        )
+        self.batch_norm = nn.BatchNorm2d(temporal_filters)
+        self.pool = nn.AvgPool2d(kernel_size=(1, pool_length), stride=(1, pool_stride))
+        self.dropout = nn.Dropout(dropout_rate)
+
+        with torch.no_grad():
+            dummy = torch.zeros(1, 1, n_channels, n_samples)
+            features = self._forward_features(dummy)
+            flattened_dim = features.reshape(1, -1).shape[1]
+
+        self.classifier = nn.Linear(flattened_dim, 2)
+
+    def _forward_features(self, x):
+        x = self.temporal_conv(x)
+        x = self.spatial_conv(x)
+        x = self.batch_norm(x)
+        x = torch.square(x)
+        x = self.pool(x)
+        x = torch.log(torch.clamp(x, min=1e-6))
+        x = self.dropout(x)
+        return x
+
+    def forward(self, x):
+        x = self._forward_features(x)
+        x = torch.flatten(x, start_dim=1)
+        return self.classifier(x)
+
+
 class EEGLSTM(nn.Module):
     def __init__(
         self,

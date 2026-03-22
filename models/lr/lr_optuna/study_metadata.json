@@ -1,0 +1,13 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 8,
+  "best_value": 0.6226168013128238,
+  "best_params": {
+    "penalty": "elasticnet",
+    "class_weight": "balanced",
+    "csp_components": 6,
+    "c_value": 2.1386921469346167,
+    "l1_ratio": 0.8
+  }
+}

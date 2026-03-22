@@ -1,0 +1,4 @@
+parameter_name,parameter_value,n_estimators,criterion,max_depth,min_samples_split,min_samples_leaf,max_features,class_weight,csp_components,mean_accuracy,std_accuracy,mean_f1,mean_auc
+class_weight,,200,gini,10,10,5,sqrt,,6,0.6023638495442681,0.11859475089364191,0.5215518955870742,0.6816696374554577
+class_weight,balanced,200,gini,10,10,5,sqrt,balanced,6,0.6030451529487153,0.11480507234512935,0.5313983569751426,0.6819520995302304
+class_weight,balanced_subsample,200,gini,10,10,5,sqrt,balanced_subsample,6,0.6030090180962434,0.11963014917560455,0.5269363013778635,0.6826633792655312
