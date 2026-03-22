@@ -1,0 +1,3 @@
+parameter_name,parameter_value,kernel,C,gamma,degree,coef0,class_weight,csp_components,mean_accuracy,std_accuracy,mean_f1,mean_auc
+class_weight,,linear,1.0,scale,3,0.0,,6,0.6250182696167671,0.1353206196408907,0.565138203568334,0.7257360214932795
+class_weight,balanced,linear,1.0,scale,3,0.0,balanced,6,0.6262291593825462,0.13348346133578617,0.5735975696599295,0.7258128497874792

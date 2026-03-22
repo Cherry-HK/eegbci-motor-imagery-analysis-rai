@@ -1,0 +1,22 @@
+LR OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+penalty: elasticnet
+C: 2.1386921469346167
+solver: saga
+class_weight: balanced
+l1_ratio: 0.8
+csp_components: 6
+
+Best model final metrics
+mean_accuracy: 0.6226
+std_accuracy: 0.1355
+mean_f1: 0.5796
+mean_auc: 0.7245
+
+Top ranked trials
+rank 1: penalty=elasticnet, C=2.1386921469346167, solver=saga, class_weight=balanced, l1_ratio=0.8, csp_components=6, mean_accuracy=0.6226, mean_f1=0.5796, mean_auc=0.7245
+rank 2: penalty=l2, C=1.4374796359270783, solver=liblinear, class_weight=balanced, l1_ratio=unused, csp_components=6, mean_accuracy=0.6224, mean_f1=0.5794, mean_auc=0.7247
+rank 3: penalty=l2, C=1.6861260553763415, solver=liblinear, class_weight=balanced, l1_ratio=unused, csp_components=6, mean_accuracy=0.6224, mean_f1=0.5794, mean_auc=0.7247

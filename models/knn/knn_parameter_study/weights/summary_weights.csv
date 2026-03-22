@@ -1,0 +1,3 @@
+parameter_name,parameter_value,n_neighbors,weights,metric,p,csp_components,mean_accuracy,std_accuracy,mean_f1,mean_auc
+weights,uniform,5,uniform,minkowski,2,6,0.5629373363584477,0.09183649309880756,0.5201994352352771,0.5885941242159999
+weights,distance,5,distance,minkowski,2,6,0.5604323585627722,0.09429957654191921,0.5179887524545675,0.5899374105078684

@@ -6,7 +6,7 @@ import pandas as pd
 # warnings.filterwarnings('ignore', category=RuntimeWarning)
 
 EXPERIMENT_NAME = "preprocessing_result"  # change
-OUTPUT_DIR = os.path.join("models", "output", EXPERIMENT_NAME)
+OUTPUT_DIR = os.path.join("models", EXPERIMENT_NAME)
 
 class EEGPreprocessor:
     
