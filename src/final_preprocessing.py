@@ -288,7 +288,7 @@ class EEGPreprocessor:
 
 if __name__ == "__main__":
 
-    data_path = "data/MNE-eegbci-data/files/eegmmidb/1.0.0"
+    data_path = "data/raw"
 
     preprocessor = EEGPreprocessor(
         data_path=data_path,
