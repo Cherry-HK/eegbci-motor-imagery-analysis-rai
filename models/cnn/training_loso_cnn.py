@@ -9,6 +9,7 @@ import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
+from models.deep_learning_utils import run_loso_deep
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score, roc_auc_score
 from sklearn.model_selection import LeaveOneGroupOut
 from torch.utils.data import DataLoader, TensorDataset
@@ -110,6 +111,17 @@ class EEGNetLite(nn.Module):
         x = self.features(x)
         x = torch.flatten(x, start_dim=1)
         return self.classifier(x)
+
+
+def build_model(config, n_channels, n_samples):
+    return EEGNetLite(
+        n_channels=n_channels,
+        n_samples=n_samples,
+        temporal_filters=config["temporal_filters"],
+        depth_multiplier=config["depth_multiplier"],
+        kernel_length=config["kernel_length"],
+        dropout_rate=config["dropout_rate"],
+    ).to(DEVICE)
 
 
 def get_process_memory_mb():
@@ -766,7 +778,15 @@ def run_parameter_study(parameter_name, values, base_config):
 
         progress_label = f"{parameter_name}={value} [{value_index}/{total_values}]"
         print(f"\nRunning {progress_label}")
-        result = run_loso_cnn(X, y, subjects, progress_label=progress_label, **config)
+        result = run_loso_deep(
+            X,
+            y,
+            subjects,
+            config=config,
+            build_model=build_model,
+            add_channel_dim=True,
+            progress_label=progress_label,
+        )
 
         summary_row = {
             "parameter_name": parameter_name,

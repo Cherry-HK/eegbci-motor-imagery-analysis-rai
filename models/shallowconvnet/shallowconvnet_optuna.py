@@ -34,7 +34,7 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 30
+N_TRIALS = 50
 FIXED_CONFIG = {
     "pool_stride": 15,
     "batch_size": 32,

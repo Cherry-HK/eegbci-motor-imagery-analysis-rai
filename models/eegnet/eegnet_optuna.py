@@ -34,7 +34,7 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 30
+N_TRIALS = 50
 FIXED_CONFIG = {
     "batch_size": 32,
     "epochs": 50,
