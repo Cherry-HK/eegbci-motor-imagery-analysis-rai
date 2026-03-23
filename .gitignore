@@ -11,6 +11,9 @@ venv/
 .venv/
 ENV/
 
+# Documentation
+docs/
+
 # Jupyter Notebook
 .ipynb_checkpoints/
 *.ipynb_checkpoints
@@ -30,32 +33,22 @@ MNE-Python-*.sh
 .DS_Store
 Thumbs.db
 
-# Dataset (PhysioNet EEGMMIDB)
-data/raw/*
-!data/raw/.gitkeep
-
-# MNE-Python downloaded datasets
-data/MNE-eegbci-data/
-
-# Generated numpy files (preprocessed data)
-*.npy
-X_train*.npy
-X_test*.npy
-y_train.npy
-y_test.npy
-subjects.npy
 
 # Trained models and results
+*.npy
 *.pkl
 *.h5
 *.pt
 *.pth
 
+# Data (keep folders, ignore contents except .gitkeep)
+data/raw/**
+!data/raw/.gitkeep
+
+models/preprocessing_result/**
+!models/preprocessing_result/.gitkeep
 
 
 # Visualization outputs
-
-*.jpg
-*.pdf
 figures/
 results/

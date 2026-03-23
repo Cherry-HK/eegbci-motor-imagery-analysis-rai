@@ -1,0 +1,11 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 2,
+  "best_value": 0.6236252898835507,
+  "best_params": {
+    "solver": "lsqr",
+    "shrinkage_supported": 0.3,
+    "csp_components": 6
+  }
+}

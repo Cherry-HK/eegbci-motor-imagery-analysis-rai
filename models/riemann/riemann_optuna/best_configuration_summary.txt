@@ -1,0 +1,23 @@
+RIEMANN OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials attempted: 30
+Valid trials completed: 30
+Skipped trials: 0
+
+Best overall parameter combination
+cov_estimator: lwf
+ts_metric: riemann
+C: 0.177474585048418
+solver: saga
+class_weight: None
+
+Best model final metrics
+mean_accuracy: 0.6320
+std_accuracy: 0.1214
+mean_f1: 0.5883
+mean_auc: 0.7133
+
+Top ranked trials
+rank 1: cov_estimator=lwf, ts_metric=riemann, C=0.177474585048418, solver=saga, class_weight=None, mean_accuracy=0.6320, mean_f1=0.5883, mean_auc=0.7133
+rank 2: cov_estimator=lwf, ts_metric=riemann, C=0.20407218846189334, solver=saga, class_weight=None, mean_accuracy=0.6318, mean_f1=0.5890, mean_auc=0.7129
+rank 3: cov_estimator=lwf, ts_metric=riemann, C=0.11745388344009906, solver=saga, class_weight=None, mean_accuracy=0.6316, mean_f1=0.5884, mean_auc=0.7144

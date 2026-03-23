@@ -1,0 +1,14 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 4,
+  "best_value": 0.5683200879697037,
+  "best_params": {
+    "max_depth": 7,
+    "criterion": "entropy",
+    "min_samples_split": 6,
+    "min_samples_leaf": 4,
+    "class_weight": "balanced",
+    "csp_components": 6
+  }
+}
