@@ -1,0 +1,19 @@
+LDA OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+solver: lsqr
+shrinkage: 0.3
+csp_components: 6
+
+Best model final metrics
+mean_accuracy: 0.6236
+std_accuracy: 0.1324
+mean_f1: 0.5586
+mean_auc: 0.7251
+
+Top ranked trials
+rank 1: solver=lsqr, shrinkage=0.3, csp_components=6, mean_accuracy=0.6236, mean_f1=0.5586, mean_auc=0.7251
+rank 2: solver=lsqr, shrinkage=0.3, csp_components=6, mean_accuracy=0.6236, mean_f1=0.5586, mean_auc=0.7251
+rank 3: solver=lsqr, shrinkage=0.3, csp_components=6, mean_accuracy=0.6236, mean_f1=0.5586, mean_auc=0.7251
