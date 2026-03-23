@@ -35,7 +35,6 @@ Thumbs.db
 
 
 # Trained models and results
-*.npy
 *.pkl
 *.h5
 *.pt
