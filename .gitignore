@@ -44,8 +44,8 @@ Thumbs.db
 data/raw/**
 !data/raw/.gitkeep
 
-models/preprocessing_result/**
-!models/preprocessing_result/.gitkeep
+# models/preprocessing_result/**
+# !models/preprocessing_result/.gitkeep
 
 
 # Visualization outputs
