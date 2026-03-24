@@ -60,10 +60,10 @@ def load_best_configuration(path):
         "std_accuracy": float(best_row["std_accuracy"]),
         "mean_f1": float(best_row["mean_f1"]),
         "mean_auc": float(best_row["mean_auc"]),
-        "mean_final_train_loss": parse_numeric(best_row["mean_final_train_loss"]),
-        "mean_best_val_loss": parse_numeric(best_row["mean_best_val_loss"]),
-        "mean_best_epoch": parse_numeric(best_row["mean_best_epoch"]),
-        "mean_stopped_epoch": parse_numeric(best_row["mean_stopped_epoch"]),
+        "mean_final_train_loss": parse_numeric(best_row.get("mean_final_train_loss")),
+        "mean_best_val_loss": parse_numeric(best_row.get("mean_best_val_loss")),
+        "mean_best_epoch": parse_numeric(best_row.get("mean_best_epoch")),
+        "mean_stopped_epoch": parse_numeric(best_row.get("mean_stopped_epoch")),
     }
 
 

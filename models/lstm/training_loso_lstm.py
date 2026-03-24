@@ -41,6 +41,15 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
+def _fieldnames_with_extras(preferred_fieldnames, rows):
+    fieldnames = list(preferred_fieldnames)
+    for row in rows:
+        for key in row.keys():
+            if key not in fieldnames:
+                fieldnames.append(key)
+    return fieldnames
+
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -399,6 +408,8 @@ def write_summary_csv(path, rows):
         "mean_stopped_epoch",
     ]
 
+    fieldnames = _fieldnames_with_extras(fieldnames, rows)
+
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -444,6 +455,8 @@ def write_fold_csv(path, rows):
         "stopped_epoch",
     ]
 
+    fieldnames = _fieldnames_with_extras(fieldnames, rows)
+
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
         writer.writeheader()
@@ -488,6 +501,8 @@ def write_loss_csv(path, rows):
         "val_loss",
         "learning_rate",
     ]
+
+    fieldnames = _fieldnames_with_extras(fieldnames, rows)
 
     with open(path, "w", newline="", encoding="utf-8") as csvfile:
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
