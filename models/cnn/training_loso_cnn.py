@@ -610,6 +610,7 @@ def write_fold_csv(path, rows):
         "accuracy",
         "f1_score",
         "roc_auc",
+        "support",
         "train_time_sec",
         "inference_time_sec",
         "inference_ms_per_sample",
@@ -938,6 +939,11 @@ PARAMETER_STUDIES = [
         "overrides": {},
     },
     {
+        "name": "depth_multiplier",
+        "values": [1, 2, 4],
+        "overrides": {"temporal_filters": 8},
+    },
+    {
         "name": "dropout_rate",
         "values": [0.25, 0.5, 0.75],
         "overrides": {"temporal_filters": 8},
@@ -945,11 +951,6 @@ PARAMETER_STUDIES = [
     {
         "name": "learning_rate",
         "values": [1e-4, 1e-3, 1e-2],
-        "overrides": {"temporal_filters": 8},
-    },
-    {
-        "name": "batch_size",
-        "values": [16, 32, 64],
         "overrides": {"temporal_filters": 8},
     },
     {

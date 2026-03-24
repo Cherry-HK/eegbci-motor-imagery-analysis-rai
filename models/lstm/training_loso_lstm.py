@@ -429,6 +429,7 @@ def write_fold_csv(path, rows):
         "accuracy",
         "f1_score",
         "roc_auc",
+        "support",
         "train_time_sec",
         "inference_time_sec",
         "inference_ms_per_sample",

@@ -445,6 +445,7 @@ def write_fold_csv(path, rows):
         "accuracy",
         "f1_score",
         "roc_auc",
+        "support",
         "train_time_sec",
         "inference_time_sec",
         "inference_ms_per_sample",
@@ -795,6 +796,11 @@ PARAMETER_STUDIES = [
         "name": "num_layers",
         "values": [1, 2, 3],
         "overrides": {"d_model": 64, "nhead": 4},
+    },
+    {
+        "name": "dim_feedforward",
+        "values": [64, 128, 256],
+        "overrides": {"d_model": 64, "nhead": 4, "num_layers": 2},
     },
     {
         "name": "dropout_rate",

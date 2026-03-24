@@ -308,11 +308,36 @@ BASE_CONFIG = {
 }
 
 PARAMETER_STUDIES = [
-    {"name": "temporal_filters", "values": [20, 40, 60], "overrides": {}},
-    {"name": "filter_length", "values": [15, 25, 35], "overrides": {"temporal_filters": 40}},
-    {"name": "pool_length", "values": [50, 75, 100], "overrides": {"temporal_filters": 40}},
-    {"name": "dropout_rate", "values": [0.25, 0.5, 0.75], "overrides": {"temporal_filters": 40}},
-    {"name": "learning_rate", "values": [1e-4, 1e-3, 1e-2], "overrides": {"temporal_filters": 40}},
+    {
+        "name": "temporal_filters",
+        "values": [20, 40, 60],
+        "overrides": {},
+    },
+    {
+        "name": "filter_length",
+        "values": [15, 25, 35],
+        "overrides": {"temporal_filters": 40},
+    },
+    {
+        "name": "pool_length",
+        "values": [50, 75, 100],
+        "overrides": {"temporal_filters": 40},
+    },
+    {
+        "name": "pool_stride",
+        "values": [10, 15, 20],
+        "overrides": {"temporal_filters": 40, "pool_length": 75},
+    },
+    {
+        "name": "dropout_rate",
+        "values": [0.1, 0.3, 0.5],
+        "overrides": {"temporal_filters": 40},
+    },
+    {
+        "name": "learning_rate",
+        "values": [1e-4, 1e-3, 1e-2],
+        "overrides": {"temporal_filters": 40},
+    },
 ]
 
 

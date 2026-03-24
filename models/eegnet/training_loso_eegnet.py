@@ -392,6 +392,7 @@ def write_fold_csv(path, rows):
         "accuracy",
         "f1_score",
         "roc_auc",
+        "support",
         "train_time_sec",
         "inference_time_sec",
         "inference_ms_per_sample",
@@ -710,7 +711,7 @@ BASE_CONFIG = {
     "depth_multiplier": 2,
     "f2": 16,
     "kernel_length": 64,
-    "dropout_rate": 0.25,
+    "dropout_rate": 0.3,
     "learning_rate": 1e-3,
     "batch_size": 32,
     "epochs": 50,
@@ -741,7 +742,7 @@ PARAMETER_STUDIES = [
     },
     {
         "name": "dropout_rate",
-        "values": [0.1, 0.25, 0.5],
+        "values": [0.1, 0.3, 0.5],
         "overrides": {"f1": 8, "depth_multiplier": 2},
     },
     {
