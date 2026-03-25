@@ -145,12 +145,12 @@ BASE_CONFIG = {
 
 
 PARAMETER_STUDIES = [
-    # {"name": "batch_size", "values": [16, 32, 64], "overrides": {}},
-    # {"name": "epochs", "values": [50, 75, 100], "overrides": {}},
-    # {"name": "weight_decay", "values": [0.0, 1e-4, 1e-3], "overrides": {}},
-    # {"name": "validation_fraction", "values": [0.1, 0.15, 0.2], "overrides": {}},
-    # {"name": "early_stopping_patience", "values": [5, 10, 15], "overrides": {}},
-    # {"name": "lr_scheduler_patience", "values": [3, 5, 8], "overrides": {}},
+    {"name": "batch_size", "values": [16, 32, 64], "overrides": {}},
+    {"name": "epochs", "values": [50, 75, 100], "overrides": {}},
+    {"name": "weight_decay", "values": [0.0, 1e-4, 1e-3], "overrides": {}},
+    {"name": "validation_fraction", "values": [0.1, 0.15, 0.2], "overrides": {}},
+    {"name": "early_stopping_patience", "values": [5, 10, 15], "overrides": {}},
+    {"name": "lr_scheduler_patience", "values": [3, 5, 8], "overrides": {}},
     {"name": "lr_scheduler_factor", "values": [0.3, 0.5, 0.7], "overrides": {}},
     {"name": "use_class_weight", "values": [True, False], "overrides": {}},
 ]

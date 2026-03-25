@@ -797,26 +797,26 @@ BASE_CONFIG = {
 }
 
 PARAMETER_STUDIES = [
-    # {
-    #     "name": "d_model",
-    #     "values": [32, 64, 128],
-    #     "overrides": {},
-    # },
-    # {
-    #     "name": "nhead",
-    #     "values": [2, 4, 8],
-    #     "overrides": {"d_model": 64},
-    # },
-    # {
-    #     "name": "num_layers",
-    #     "values": [1, 2, 3],
-    #     "overrides": {"d_model": 64, "nhead": 4},
-    # },
-    # {
-    #     "name": "dim_feedforward",
-    #     "values": [64, 128, 256],
-    #     "overrides": {"d_model": 64, "nhead": 4, "num_layers": 2},
-    # },
+    {
+        "name": "d_model",
+        "values": [32, 64, 128],
+        "overrides": {},
+    },
+    {
+        "name": "nhead",
+        "values": [2, 4, 8],
+        "overrides": {"d_model": 64},
+    },
+    {
+        "name": "num_layers",
+        "values": [1, 2, 3],
+        "overrides": {"d_model": 64, "nhead": 4},
+    },
+    {
+        "name": "dim_feedforward",
+        "values": [64, 128, 256],
+        "overrides": {"d_model": 64, "nhead": 4, "num_layers": 2},
+    },
     {
         "name": "dropout_rate",
         "values": [0.1, 0.3, 0.5],

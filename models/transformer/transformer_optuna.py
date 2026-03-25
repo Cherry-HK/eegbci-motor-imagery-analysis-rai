@@ -34,17 +34,15 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 50
+N_TRIALS = 30
 FIXED_CONFIG = {
-    "nhead": 4,
-    "dim_feedforward": 128,
-    "batch_size": 32,
+    "batch_size": 16,
     "epochs": 75,
-    "weight_decay": 0.0,
-    "validation_fraction": 0.1,
-    "early_stopping_patience": 10,
+    "weight_decay": 1e-3,
+    "validation_fraction": 0.2,
+    "early_stopping_patience": 15,
     "lr_scheduler_patience": 5,
-    "lr_scheduler_factor": 0.5,
+    "lr_scheduler_factor": 0.7,
     "use_class_weight": True,
     "seed": 42,
 }
@@ -62,25 +60,20 @@ def build_model(config, n_channels, n_samples):
 
 
 def suggest_params(trial):
-    d_model = trial.suggest_categorical("d_model", [32, 64, 128])
-    if d_model % FIXED_CONFIG["nhead"] != 0:
+    d_model = trial.suggest_categorical("d_model", [16, 32, 64])
+    nhead = trial.suggest_categorical("nhead", [2, 8])
+
+    if d_model % nhead != 0:
         raise optuna.TrialPruned()
+    
     return {
         "d_model": d_model,
-        "nhead": FIXED_CONFIG["nhead"],
-        "num_layers": trial.suggest_categorical("num_layers", [1, 2]),
-        "dim_feedforward": FIXED_CONFIG["dim_feedforward"],
-        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.1]),
+        "nhead": nhead,
+        "num_layers": trial.suggest_categorical("num_layers", [1, 3]),
+        "dim_feedforward": trial.suggest_categorical("dim_feedforward", [128, 256]),
+        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.3, 0.5]),
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
-        "batch_size": FIXED_CONFIG["batch_size"],
-        "epochs": FIXED_CONFIG["epochs"],
-        "weight_decay": FIXED_CONFIG["weight_decay"],
-        "validation_fraction": FIXED_CONFIG["validation_fraction"],
-        "early_stopping_patience": FIXED_CONFIG["early_stopping_patience"],
-        "lr_scheduler_patience": FIXED_CONFIG["lr_scheduler_patience"],
-        "lr_scheduler_factor": FIXED_CONFIG["lr_scheduler_factor"],
-        "use_class_weight": FIXED_CONFIG["use_class_weight"],
-        "seed": FIXED_CONFIG["seed"],
+        **FIXED_CONFIG,
     }
 
 

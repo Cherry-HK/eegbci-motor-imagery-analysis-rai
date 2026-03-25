@@ -34,16 +34,16 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 50
+N_TRIALS = 30
 FIXED_CONFIG = {
     "batch_size": 32,
-    "epochs": 50,
-    "weight_decay": 0.0,
+    "epochs": 75,
+    "weight_decay": 1e-4,
     "validation_fraction": 0.1,
-    "early_stopping_patience": 10,
-    "lr_scheduler_patience": 5,
-    "lr_scheduler_factor": 0.5,
-    "use_class_weight": True,
+    "early_stopping_patience": 5,
+    "lr_scheduler_patience": 3,
+    "lr_scheduler_factor": 0.7,
+    "use_class_weight": False,
     "seed": 42,
 }
 
@@ -61,11 +61,11 @@ def build_model(config, n_channels, n_samples):
 
 def suggest_params(trial):
     return {
-        "temporal_filters": trial.suggest_categorical("temporal_filters", [4, 8, 16]),
-        "depth_multiplier": trial.suggest_categorical("depth_multiplier", [2]),
-        "kernel_length": trial.suggest_categorical("kernel_length", [64]),
+        "temporal_filters": trial.suggest_int("temporal_filters", 8, 12, step=2),
+        "depth_multiplier": trial.suggest_int("depth_multiplier", 2, 6, step=2),
+        "kernel_length": trial.suggest_categorical("kernel_length", [32, 64]),
         "dropout_rate": trial.suggest_categorical("dropout_rate", [0.25, 0.5]),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
+        "learning_rate": trial.suggest_float("learning_rate", 1e-3, 1e-2, log=True),
         **FIXED_CONFIG,
     }
 

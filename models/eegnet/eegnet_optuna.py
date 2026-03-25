@@ -34,16 +34,16 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 50
+N_TRIALS = 30
 FIXED_CONFIG = {
-    "batch_size": 32,
-    "epochs": 50,
+    "batch_size": 64,
+    "epochs": 75,
     "weight_decay": 0.0,
-    "validation_fraction": 0.1,
-    "early_stopping_patience": 10,
-    "lr_scheduler_patience": 5,
-    "lr_scheduler_factor": 0.5,
-    "use_class_weight": True,
+    "validation_fraction": 0.2,
+    "early_stopping_patience": 5,
+    "lr_scheduler_patience": 3,
+    "lr_scheduler_factor": 0.7,
+    "use_class_weight": False,
     "seed": 42,
 }
 
@@ -65,14 +65,14 @@ def build_model(config, n_channels, n_samples):
 
 def suggest_params(trial):
     f1 = trial.suggest_categorical("f1", [4, 8, 16])
-    depth_multiplier = trial.suggest_categorical("depth_multiplier", [1, 2])
+    depth_multiplier = trial.suggest_categorical("depth_multiplier", [2, 4, 6])
     return {
         "f1": f1,
         "depth_multiplier": depth_multiplier,
         "f2": f1 * depth_multiplier,
-        "kernel_length": trial.suggest_categorical("kernel_length", [64]),
-        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.25]),
-        "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
+        "kernel_length": trial.suggest_categorical("kernel_length", [32]),
+        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.4, 0.5, 0.6]),
+        "learning_rate": trial.suggest_float("learning_rate", 5e-4, 2e-3, log=True),
         **FIXED_CONFIG,
     }
 
