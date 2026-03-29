@@ -34,9 +34,9 @@ print("Results directory:", RESULTS_DIR)
 print("Device:", DEVICE)
 
 
-N_TRIALS = 30
+N_TRIALS = 3
 FIXED_CONFIG = {
-    "batch_size": 16,
+    "batch_size": 64,
     "epochs": 75,
     "weight_decay": 1e-3,
     "validation_fraction": 0.2,
@@ -60,8 +60,10 @@ def build_model(config, n_channels, n_samples):
 
 
 def suggest_params(trial):
-    d_model = trial.suggest_categorical("d_model", [16, 32, 64])
-    nhead = trial.suggest_categorical("nhead", [2, 8])
+    # d_model = trial.suggest_categorical("d_model", [16, 32, 64])
+    d_model = trial.suggest_categorical("d_model", [16, 32])
+    # nhead = trial.suggest_categorical("nhead", [2, 8])
+    nhead = trial.suggest_categorical("nhead", [8])
 
     if d_model % nhead != 0:
         raise optuna.TrialPruned()
@@ -70,8 +72,10 @@ def suggest_params(trial):
         "d_model": d_model,
         "nhead": nhead,
         "num_layers": trial.suggest_categorical("num_layers", [1, 3]),
-        "dim_feedforward": trial.suggest_categorical("dim_feedforward", [128, 256]),
-        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.3, 0.5]),
+        "dim_feedforward": trial.suggest_categorical("dim_feedforward", [256]),
+        # "dim_feedforward": trial.suggest_categorical("dim_feedforward", [128, 256]),
+        "dropout_rate": trial.suggest_categorical("dropout_rate", [0.5]),
+        # "dropout_rate": trial.suggest_categorical("dropout_rate", [0.3, 0.5]),
         "learning_rate": trial.suggest_float("learning_rate", 1e-4, 1e-3, log=True),
         **FIXED_CONFIG,
     }

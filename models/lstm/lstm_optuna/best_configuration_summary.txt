@@ -1,0 +1,25 @@
+LSTM OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+hidden_size: 32
+num_layers: 3
+dropout_rate: 0.1
+bidirectional: True
+learning_rate: 0.0009448972874536926
+
+Best model final metrics
+mean_accuracy: 0.5188
+std_accuracy: 0.0676
+mean_f1: 0.4897
+mean_auc: 0.5210
+mean_final_train_loss: 0.6753
+mean_best_val_loss: 0.6913
+mean_best_epoch: 4.59
+mean_stopped_epoch: 9.59
+
+Top ranked trials
+rank 1: hidden_size=32, num_layers=3, dropout_rate=0.1, bidirectional=True, learning_rate=0.0009448972874536926, mean_accuracy=0.5188, mean_f1=0.4897, mean_auc=0.5210
+rank 2: hidden_size=32, num_layers=1, dropout_rate=0.5, bidirectional=False, learning_rate=0.0011537559719994328, mean_accuracy=0.5128, mean_f1=0.4553, mean_auc=0.5134
+rank 3: hidden_size=32, num_layers=3, dropout_rate=0.1, bidirectional=True, learning_rate=0.0007676036788790275, mean_accuracy=0.5128, mean_f1=0.5001, mean_auc=0.5139

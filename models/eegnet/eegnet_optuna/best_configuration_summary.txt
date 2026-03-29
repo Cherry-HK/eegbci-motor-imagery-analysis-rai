@@ -1,0 +1,26 @@
+EEGNET OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+f1: 8
+depth_multiplier: 6
+f2: 48
+kernel_length: 32
+dropout_rate: 0.5
+learning_rate: 0.0007030098539133861
+
+Best model final metrics
+mean_accuracy: 0.6634
+std_accuracy: 0.1339
+mean_f1: 0.6245
+mean_auc: 0.7401
+mean_final_train_loss: 0.5869
+mean_best_val_loss: 0.6023
+mean_best_epoch: 21.43
+mean_stopped_epoch: 26.43
+
+Top ranked trials
+rank 1: f1=8, depth_multiplier=6, f2=48, kernel_length=32, dropout_rate=0.5, learning_rate=0.0007030098539133861, mean_accuracy=0.6634, mean_f1=0.6245, mean_auc=0.7401
+rank 2: f1=8, depth_multiplier=4, f2=32, kernel_length=32, dropout_rate=0.5, learning_rate=0.0005004752655474414, mean_accuracy=0.6632, mean_f1=0.6364, mean_auc=0.7455
+rank 3: f1=8, depth_multiplier=4, f2=32, kernel_length=32, dropout_rate=0.5, learning_rate=0.0005136065687278436, mean_accuracy=0.6625, mean_f1=0.6230, mean_auc=0.7446

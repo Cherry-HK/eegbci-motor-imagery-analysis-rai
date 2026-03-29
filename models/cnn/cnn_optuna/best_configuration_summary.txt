@@ -1,0 +1,25 @@
+CNN OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+temporal_filters: 8
+depth_multiplier: 2
+kernel_length: 32
+dropout_rate: 0.25
+learning_rate: 0.0019938932020194073
+
+Best model final metrics
+mean_accuracy: 0.6571
+std_accuracy: 0.1317
+mean_f1: 0.6336
+mean_auc: 0.7434
+mean_final_train_loss: 0.5803
+mean_best_val_loss: 0.5952
+mean_best_epoch: 10.83
+mean_stopped_epoch: 15.83
+
+Top ranked trials
+rank 1: temporal_filters=8, depth_multiplier=2, kernel_length=32, dropout_rate=0.25, learning_rate=0.0019938932020194073, mean_accuracy=0.6571, mean_f1=0.6336, mean_auc=0.7434
+rank 2: temporal_filters=10, depth_multiplier=2, kernel_length=64, dropout_rate=0.25, learning_rate=0.0010673012973342602, mean_accuracy=0.6563, mean_f1=0.6256, mean_auc=0.7369
+rank 3: temporal_filters=10, depth_multiplier=2, kernel_length=32, dropout_rate=0.25, learning_rate=0.001057871680183938, mean_accuracy=0.6555, mean_f1=0.6205, mean_auc=0.7438

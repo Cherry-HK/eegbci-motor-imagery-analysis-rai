@@ -1,0 +1,26 @@
+SHALLOWCONVNET OPTUNA TUNING SUMMARY
+======================================================================
+Total Optuna trials evaluated: 30
+
+Best overall parameter combination
+temporal_filters: 20
+filter_length: 35
+pool_length: 50
+pool_stride: 15
+dropout_rate: 0.5
+learning_rate: 0.0005661525706310615
+
+Best model final metrics
+mean_accuracy: 0.6721
+std_accuracy: 0.1350
+mean_f1: 0.6405
+mean_auc: 0.7576
+mean_final_train_loss: 0.5700
+mean_best_val_loss: 0.5696
+mean_best_epoch: 12.83
+mean_stopped_epoch: 17.83
+
+Top ranked trials
+rank 1: temporal_filters=20, filter_length=35, pool_length=50, pool_stride=15, dropout_rate=0.5, learning_rate=0.0005661525706310615, mean_accuracy=0.6721, mean_f1=0.6405, mean_auc=0.7576
+rank 2: temporal_filters=20, filter_length=35, pool_length=75, pool_stride=15, dropout_rate=0.5, learning_rate=0.00022469850626607605, mean_accuracy=0.6707, mean_f1=0.6461, mean_auc=0.7535
+rank 3: temporal_filters=40, filter_length=35, pool_length=75, pool_stride=15, dropout_rate=0.3, learning_rate=0.0005803927140328609, mean_accuracy=0.6705, mean_f1=0.6484, mean_auc=0.7534

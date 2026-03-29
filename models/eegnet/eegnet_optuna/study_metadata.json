@@ -1,0 +1,13 @@
+{
+  "optimizer": "optuna",
+  "n_trials": 30,
+  "best_trial_number": 11,
+  "best_value": 0.6634377604283554,
+  "best_params": {
+    "f1": 8,
+    "depth_multiplier": 6,
+    "kernel_length": 32,
+    "dropout_rate": 0.5,
+    "learning_rate": 0.0007030098539133861
+  }
+}
