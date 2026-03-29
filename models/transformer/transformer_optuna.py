@@ -36,7 +36,7 @@ print("Device:", DEVICE)
 
 N_TRIALS = 3
 FIXED_CONFIG = {
-    "batch_size": 64,
+    "batch_size": 16,
     "epochs": 75,
     "weight_decay": 1e-3,
     "validation_fraction": 0.2,
